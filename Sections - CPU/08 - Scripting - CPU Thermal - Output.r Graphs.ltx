@@ -1,0 +1,581 @@
+\section{Scripting: CPU Thermal - Output.r (Graph Output)}
+
+Now we have the final section of the "CPU Thermal – Output.r" script, which is almost exclusively focused on creating the graphs. The lone exceptions to this would be the two lines calling \textbf{sinkTXT} and \textbf{sinkHTML} near the end, where all of the functions to actually create the output files are placed. I prefer to keep these various functions together and at the end like this, to easily find them, and to easily avoid them, when copying the contents of the Output script into the R GUI for experimentation.
+
+\subsection{customSave Function}
+\begin{styleR}
+customSave	=	function(type="", device=ggdevice, plot = last_plot(), width=gWIDTH, height=gHEIGH, dpi=DPI)	{
+	if	(device	==	"png"	|	device == "both")	{
+		ggsave(filename=paste0(type, ".png"), plot = plot, device="png", width=width, height=height, dpi=dpi)
+	}
+	if	(device	==	"pdf"	|	device == "both")	{
+		ggsave(filename=paste0(type, ".pdf"), plot = plot, device="pdf", width=width, height=height)
+	}
+}
+\end{styleR}
+
+This first function is what directs the saving of the graphs as PNGs, PDFs, or both types of files, which is why I have it named \textbf{customSave}. Really it is just a wrapper function for \textbf{ggsave}, the \textit{ggplot2} function for saving files that will pass certain values to arguments for me, without having to manually provide them. My function's arguments each have a default value with the first being \textbf{type} that might be better called \textbf{filename}, as is the argument for \textbf{ggsave}. As I want the file name to identify the type of graph, this name is not inappropriate.
+
+The remaining arguments except for \textbf{plot} each take as defaults values set in the Input.r script. The \textbf{device} argument is given \textbf{ggdevice} and determines the file type of the output, while \textbf{width}, \textbf{height}, and \textbf{dpi} all take values appropriate to those names.
+
+The \textbf{plot} argument is an important one as it sets what graph is to be saved. The default value for \textbf{customSave} and \textbf{ggsave} are both \textbf{last\_plot()}, which refers to the last plot R drew, but it is possible to pass the graph object directly to these functions as well. This is what I do later as it is rather efficient both for not needing to render the graph first to the display then to the file and for writing out the \textbf{customSave} command.
+
+Within this function we have two \textbf{if} statements checking the value of \textbf{device} and then running the \textbf{ggsave} command within these statements. These commands are written for creating the PNG and PDF outputs, as they do have slight differences. Two of these differences are quite similar as they involve identifying the device, both for the \textbf{device} argument and within the \textbf{filename} argument, as \textbf{ggsave} makes no assumptions about the file extension. The other difference appears to no longer be an issue, but I am leaving it anyway as at one point the PDF device had issues with the inclusion of a \textbf{dpi} value. It now appears \textbf{ggsave} disregards that value, as it should given PDFs, being graphics, do not require a DPI value.
+
+The two \textbf{if} statements check what the \textbf{device} value is, supporting "png," "pdf," and "both" as options. The first two options should be self-explanatory while the last returns "TRUE" for both checks, so the graph will be saved twice, to two different formats. As I just mentioned, PDFs are graphics rather than images, which can be advantageous as graphics have unlimited detail to them, while images do not. In most of my use cases though, images are most appropriate as the graphs need to be shown on a webpage. It is only when making a LaTeX article I may prefer to use a PDF, or any graphic output, so the reader may zoom in as far as they wish, and so I can trust any text to be rendered accurately.
+
+\subsection{CAPTION Creation}
+\begin{styleR}
+CAPTION	=	c(CPUname, COOLERname,	ifelse(is.null(PULSE), TESTname, paste0(TESTname, " (", PULSE, " s)"))	)
+CAPTION	=	labs(caption = paste(CAPTION, collapse = "\n"))
+\end{styleR}
+
+There are multiple ways within \textit{ggplot2} to label a graph, and among them is the caption in the lower-right. Because of this position on the graph, I like having the configuration information there, which would be \textbf{CPUname}, \textbf{COOLERname}, \textbf{TESTname}, and, if applicable, \textbf{PULSE} for the pulse length. I build \textbf{CAPTION} as a vector with \textbf{CPUname} and \textbf{COOLERname} at the beginning followed by a call to \textbf{ifelse}. The next string I want in the vector is \textbf{TESTname} but if the test was pulsed, then I need a way to modify this element to indicate the length of the pulse. This is where \textbf{ifelse} comes into play as it can check the value of \textbf{PULSE} and then return the appropriate string. If \textbf{PULSE} is "NULL" then just \textbf{TESTname} will be returned, but if it is a number then it will be added to the string with \textbf{paste0} with the unit identified and parentheses surrounding it. Each time a test is pulsed, \textbf{TESTname} will state as much at the end so the context for the length of time will be present.
+
+The next step is to turn \textbf{CAPTION} into a \textit{ggplot2} layer, which is quite simple. The \textbf{labs} layer allows one to provide values for any of the graph labels, so I set the \textbf{caption} function equal to \textbf{paste} being run on \textbf{CAPTION} with the previously unused \textbf{collapse} argument. Normally \textbf{paste} will not disrupt a vector, but instead do its thing to each element in a vector and return another vector, but \textbf{collapse} changes that. Now it will collapse the vector down to a single string, with the provided term, in this case a line break, separating the elements. The end result then is \textbf{CPUname}, \textbf{COOLERname}, and \textbf{TESTname} on separate lines written in the lower right of every graph \textbf{CAPTION} is added to.
+
+What follows is a series of functions I wrote that do serve a very useful purpose, but are also removed from where they will be used. I realized when writing this script that several of the graphs will feature identical layers to them. Rather than constantly repeat the commands for these layers, I made them their own functions, making it much easier to achieve consistency across the graphs. The clear names also help when manipulating the order of the graph layers.
+
+\subsection{TEMP\_point Layer Function}
+\begin{styleR}
+TEMP_point	=	function(DATA = dataALL, COEF = 1)	{
+	geom_point(
+		data	=	DATA,
+		aes(y	=	CPU_Temp*COEF, 			color	=	"Temperature"),
+		stat 	=	"unique",
+		# color	=	"red",
+		shape 	=	3,
+		show.legend	=	TRUE
+	)
+}
+\end{styleR}
+
+This function defines the layer for temperature data being placed on the graph, and as the name \textbf{TEMP\_point} suggests, the data is drawn as points. Both of its arguments have default values, so using it is very simple. The first is the \textbf{DATA} to be used, hence the name, and that will always be \textbf{dataALL} in this file. The second argument is \textbf{COEF}, and this will vary at times. In this case though, it is 1 because the temperature data is never given a coefficient to adjust its scale and match the rest of the data.
+
+Within the body of this function the \textbf{geom\_point} function from \textit{ggplot2} is opened, which will add data to the graph as points on a geometric layer, hence the name. Within this function then are the arguments \textbf{data}, \textbf{aes}, \textbf{stat}, \textbf{shape}, \textbf{show.legend}, and \textbf{color}, though the last one is commented out. While it is possible to fix the color of a layer like this, I decided to use a different approach, creating a manual color scale where the color will be looked up. The advantage to this approach is having the data properly labeled in the graph's legend.
+
+Starting from the top, the \textbf{data} argument is exactly what it sounds like, identifying the data to be used when creating this layer. This value can be inherited from the larger call to open the graph, but to be on the safe side, I explicitly identify it here. That also means I can change the data object being used for this layer, without disrupting the other layers.
+
+The next argument sets the aesthetics of the layer, which are typically pulled from the \textbf{data} argument and can have operations or functions applied to them. In this case we can see the \textbf{y} aesthetic is set to be \textbf{CPU\_Temp}, which it knows to pull from \textbf{data}, and it will multiply these values by \textbf{COEF}. The second aesthetic is \textbf{color} and it is set to be "Temperature," which obviously is not a color, but the manual color scale I mentioned earlier will convert that to "red."
+
+There is another argument for \textbf{aes} necessary here, but as it is common across each of these layers, I decided to set it in the larger graph, so it is inherited by each layer. That argument is \textbf{x} and it is set to be the \textbf{Time} value within \textbf{dataALL}.
+
+The next argument is \textbf{stat} and it has a larger impact here than you might guess. If you go back to a previous section, it is mentioned some of the measurements within \textbf{dataALL} are repeated, including the temperature. With \textbf{stat} some statistical functions can be applied to the data before rendering the results. In this case the \textbf{unique} function is applied to remove the duplicates, significantly reducing the time to draw the graph. There are other functions that can be applied, and we will see them later.
+
+Unlike applying these functions within the aesthetics, \textbf{stat} respects the stated relationship between data. By that I mean applying \textbf{unique} to the \textbf{CPU\_Temp} data of \textbf{dataALL} will see a lot of the data removed, especially once the temperature stabilizes, as that will not consider the value of \textbf{Time}. With \textbf{stat}, \textbf{unique} is only applied on those values sharing the same \textbf{Time} value, the \textbf{x} aesthetic.
+
+I already touched on how coloring this layer works, but I did leave out one reason to keep the commented out \textbf{color} argument here. Quite simply, it is to see what the color for this layer should be without having to look to the color scale.
+
+The next argument is \textbf{shape} and it is for setting the shape of the points to be drawn. There are some 25 shapes \textit{ggplot2} supports for its points, which you can see listed in the article on \href{https://ggplot2.tidyverse.org/articles/ggplot2-specs.html}{aesthetic specifications}. For temperature, I chose to use a simple cross, which is shape 3.
+
+The final argument is self-explanatory; whether the data for this layer should be included in the legend. I do wish it to be identified, and so the value is explicitly stated to be "TRUE."
+
+The next block of code is all very similar to this, covering layers for socket power, core power, and uncore power data. The only differences are in the details, except for \textbf{unCORE\_point}, which I will explain after sharing the code.
+
+\subsection{SOCK\_point, CORE\_point, unCore\_point Layer Functions}
+\begin{styleR}
+SOCK_point	=	function(DATA = dataALL, COEF = 1/1000)	{
+	geom_point(
+		data	=	DATA,
+		aes(y	=	Socket_Energy*COEF,	color	=	"Socket Power"),
+		stat	=	"unique",
+		# color	=	"green",
+		shape 	=	3,
+		show.legend	=	TRUE
+	)
+}
+CORE_point	=	function(DATA = dataALL, COEF = 1/1000)	{
+	geom_point(
+		data	=	DATA,
+		aes(y	=	Core_Energy*COEF,	color	=	"Core Power"),
+		stat	=	"unique",
+		# color	=	"green",
+		show.legend	=	TRUE
+	)
+}
+unCORE_point	=	function(DATA = dataALL, COEF = 1/1000)	{
+	if (all(DATA$Uncore_Energy == 0))	return(NULL)
+	#	cannot get an Uncore from Intel CPUs
+	geom_point(
+		data	=	DATA,
+		aes(y	=	Uncore_Energy*COEF,	color	=	"Uncore Power"),
+		# color	=	"green",
+		shape	=	18,
+		show.legend	=	TRUE
+	)
+}
+\end{styleR}
+
+Within the \textbf{unCORE\_point} function is a check for if all of the data are 0. As the comment within the code notes, Intel CPUs do not provide an uncore power value, or at least not with the tools I use. If all of the data is 0, then "NULL" is returned, and so there will not be an uncore layer drawn at all.
+
+\subsection{FREQ\_point Layer Function}
+\begin{styleR}
+FREQ_point	=	function(DATA = dataALL, COEF = FREQ.COEF, MEAN = FALSE, MAX = FALSE, ALPHA = .20)	{
+	if (MEAN)	{	return(
+		geom_point(
+			data	=	DATA,
+			aes(y	=	Frequency*COEF,	color	=	"Frequency"),
+			alpha	=	ALPHA,
+			stat	=	"summary",
+			fun		=	mean,
+			show.legend	=	TRUE
+		)	)
+	}
+	if (MAX)	{	return(
+		geom_point(
+			data	=	DATA,
+			aes(y	=	Frequency*COEF,	color	=	"Frequency"),
+			alpha	=	ALPHA,
+			stat	=	"summary",
+			fun		=	max,
+			show.legend	=	TRUE
+		)	)
+	}
+	return(	geom_point(
+				data	=	DATA,
+				aes(y	=	Frequency*COEF,	color	=	"Frequency"),
+				alpha	=	ALPHA,
+				# color	=	"blue",
+				show.legend	=	TRUE
+		)	)
+}
+\end{styleR}
+
+This function is for creating the layers with frequency data, but as you can clearly see is appreciably more complicated than the other functions. The reason for this is because different graphs or configurations require different forms of this data. For the multi-threaded tests, where each thread will be loaded and so they should all be approximately the same, the mean is appropriate to use. For single-threaded tests, however, the maximum frequency is desirable, as only the loaded thread will be boosted, and the others will drag down the mean. Then there are graphs where instead I want all of the frequency data presented directly, and so no summary function should be applied to the data. Controlling which of these three versions of the layer should be used is actually fairly easy, with a lot of the code here being copied and pasted.
+
+The first difference for this function is the addition of three new arguments. The first two, \textbf{MEAN} and \textbf{MAX} have default values of "FALSE" and will be used to determine which version of the layer should be returned. The third new argument is \textbf{ALPHA} with its purpose to control the transparency of the layer. As there can and likely will be some variability to this data over the length of the test, I like to make it semi-transparent, so the intensity of the color indicates the density of the data. I do not expect as much variability from the other measurements. The default value here is 0.20, so the layer will have only 20% opacity.
+
+Within the body of the function now we can see three \textbf{return} commands for each of the three versions of the layer: mean; max; and directly. Remembering the \textbf{return} command exits the function, if the checks for the first two versions fail, then the third will be done. If either of the checks pass though, then the function will exit as it provides the layer.
+
+Keeping things simple, the \textbf{MEAN} and \textbf{MAX} arguments are logical values, so the checks need only see if they are "TRUE" or "FALSE." Within these \textbf{if} statements, the only difference between the layers is if the \textbf{fun} argument is \textbf{mean} or \textbf{max}. Even compared to the previous functions, much is the same. The only differences concern the \textbf{stat} and new \textbf{fun} argument.
+
+Instead of using "unique," directly applying that function to the data, we instead inform \textit{ggplot2} that we will be using a summary function, which is then identified by the \textbf{fun} argument. The name of the function, in this case \textbf{mean} or \textbf{max} is what must be supplied here, and then \textbf{stat} will know what to do.
+
+In theory there can be an additional argument added, within the \textbf{aes} list, specifying how the data should be grouped together for \textbf{stat} to be run on it. Appropriately this argument is named \textbf{group}, and in this case we would want it to have the value of "Time," but \textit{ggplot2} is making the correct assumption to use the \textbf{x} value, which will be set as "Time" when we actually open the graphs to work on them.
+
+\subsection{COLORS Scale Layer}
+\begin{styleR}
+COLORS	=	scale_color_manual(
+		name	=	NULL,
+		values	=	c(
+			Temperature		=	"red",
+			Frequency		=	"blue",
+			"Core Power"	=	"green",
+			"Socket Power"	=	"darkgreen",
+			"Uncore Power"	=	"yellowgreen")
+	)
+\end{styleR}
+
+I had mentioned a manual color scale before, and this is it, assigned to \textbf{COLORS}. Just as the name indicates, \textbf{scale\_color\_manual} in \textit{ggplot2} allows you to manually set the colors for specific values, as opposed to using some built-in or automatic color scale, like some we will see later. The \textbf{name} argument is set to "NULL" so the legend that identifies the colors and their meaning is untitled. For these graphs, a name for the legend is unnecessary. The \textbf{values} argument then is a list of values, and in this case I have it written as a vector, rather than a list, which is a bit more advanced, but not necessary here. The elements of the vector set the name I use within the graph layers, such as "Temperature," equal to the color I want for that layer, such as "red." Within the legend then, each measurement type will be shown with the selected color. Unfortunately I have not managed to get the shape in the legend and on the graph to match, but the color is sufficient.
+
+\subsection{themeSCALES	Graph Formatting Function}
+\begin{styleR}
+themeSCALES	=	function(COEF = FREQ.COEF){
+	list(
+		theme(
+			plot.title.position		=	"plot",
+			legend.position			=	"top",
+			legend.justification	=	"left",
+			legend.margin			=	margin(t = 0, unit = "cm")
+			),
+		scale_x_continuous(
+			name	=	"Time (seconds)",
+			# breaks	=	unique(c(seq(0, warm, by = warm/3), seq(warm, 2 * duration + warm, by = duration/6))),
+			breaks	=	unique(c(seq(-warm, 0, by = warm/3), seq(0, 2 * duration, by = duration/6))),
+			# labels	=	function(x)	labelBreak(x - warm),
+			labels	=	labelBreak,
+			minor_breaks	=	NULL,
+			expand	=	c(0.02, 0),
+			sec.axis	=	dup_axis(
+				name	=	NULL,
+				# breaks	=	c(warm, duration + warm),
+				breaks	=	c(0, duration),
+				labels	=	c("Load Start", "Load Stop/End")
+			)
+		),
+		scale_y_continuous(
+			breaks		=	seq(0, maxPWR/100, by = 10),
+			limits		=	c(0, NA),
+			expand		=	c(0.02, 0),
+			sec.axis	=	dup_axis(
+				name	=	"Frequency (MHz)",
+				labels	=	function(IN)	IN / COEF
+				)
+			),
+		COLORS
+	)
+}
+\end{styleR}
+
+While it is certainly true there is a lot to \textbf{themeSCALES}, it is not as bad as one might think at first glance. This function is for setting the common theme and scale options across multiple graphs, hence the name, and it has four discrete parts to its body, but I should start with the argument. This \textbf{COEF} is different from the arguments in the earlier functions, as this is for the \textbf{FREQ.COEF} value set in the Input script. Contained within the body of this function are the scales to be used for the graphs that will show the frequency measurements along with the other data, so the coefficient to scale things to fit is necessary.
+
+For the most part, \textbf{themeSCALES} is just to keep multiple things consistent across multiple graphs, and because there are multiple things, they must be contained in a proper list for \textit{ggplot2} to accept them. The first of the four parts alters the theme of the graphs. More specifically, it sets the position of the title and the legend. The first argument within the call to \textbf{theme} is \textbf{plot.title.position}, which is a very appropriate name. The value is "plot," which is a relatively new value for this argument, and what it does is place the title in the upper-left corner of the larger graph frame. Normally the title is aligned with the contents of the plot itself, and while that is often appropriate, I use facets quite a bit, and their presence shifts the title a bit. With this value though, the title will consistently be in the same place, based more on the size of the whole thing than its contents.
+
+The next three arguments all have to do with the legend, which is indicated by their names: \textbf{legend.position}; \textbf{legend.justification}; and \textbf{legend.margin}. With the first two, the legend is set to be above the body of the graph and aligned to the left, whereas the default position would have it to the right of the plot and with center alignment.
+
+By the way, my use of the words "graph" and "plot" are the reverse of \textit{ggplot2}. To me the plot is the object containing the representation of the data while the graph is the larger object, so when using facets, there can be multiple plots in one graph. The library refers to these same things with the names reversed, or mine are reversed, depending on how you want to look at it.
+
+The \textbf{legend.margin} argument is to remove any gap at the top of the legend, as normally there would be some padding there. We will see more manipulation of the legend for the histograms later.
+
+The next part to this function is the creating of the X scale using \textbf{scale\_x\_continuous}, as the value on that axis is time, which would be continuous as opposed to discrete. A discrete scale would be appropriate for something like plotting an average value for each period with this data, or as a better example, plotting averages for multiple CPUs or coolers on the same graph.
+
+Within the call to \textbf{scale\_x\_continuous} are multiple arguments and each is fairly important. The first is \textbf{name}, which is self-explanatory. The \textbf{breaks} argument sets the locations of the tick marks on the scale, and as you can see I have two versions of this, with one being commented out. The disabled version starts at 0, but after deciding I want the zero to be at the start of the CPU load, I changed to the enabled line. The way both lines work is to combine two sequences R will generate with the \textbf{seq} function. The first sequence starts when the Warm-up period does, which will be negative as it was before the start of the CPU test period. This then goes to 0 with a step of one-third the length of the warm-up period. The default length of this period is five minutes or 300 seconds, so it works fairly well. Really I settled on that divisor because the resulting scale looked good, with a decent number of ticks, but not too many. The second sequence goes from 0 to double the length of the test period, which takes us to the end of the Cooldown period. The step here is one-sixth the length of either of those periods, and as the default is one hour or 3600 seconds, that works out to 600 seconds a tick, or ten minutes. The \textbf{unique} function is then used to remove the repeated zero, as both of these sequences include that value. The disabled line is effectively the same, but without the Warm-up period offset. By the way, if the Cooldown period is configured to run loner than the test period, the scale will run out of breaks, but I doubt one would use such a configuration and so am not worried. To be clear, data will be shown past the end of the breaks.
+
+The next argument is \textbf{labels} and it too has a commented-out version, again from before I offset the Warm-up period. Typically the labels are generated from the breaks, and a function can be provided, which I did initially. This custom function would take the value supplied from the \textbf{breaks} list, subtract the length of the Warm-up period, and then apply the \textbf{labelBreak} function created earlier in the script. As the offset is now part of the data, the \textbf{labels} argument just needs to be passed the \textbf{labelBreak} function to get the same result.
+
+The \textbf{minor\_breaks} argument is quite simple as it controls the placing of additional tick marks, off of the selected breaks. By default these will be placed half-way between the major breaks, but I would prefer they are not present. To achieve that, I give the argument "NULL." The reason I do not want these additional breaks is I usually consider the resulting graph rather messy.
+
+This next argument, \textbf{expand}, is a bit unusual, but very important. Basically, it is a good idea to pad a data plot some, so you do not have data running all the way to the edge. The \textbf{expand} argument allows you to control the amount of padding or expansion along the scale, and it allows it in two ways, hence the two-element vector. The first element is a multiplicative value, and I like the value 0.02, so the scale will stretch an extra two percent on both the beginning and the end. The second element is an additive element, so you can supply a specific length you want tacked on. I do not like that approach, as it means you may need to update the value for different datasets, while the multiplicative can be applied generically. Of course it all comes down to taste and preference.
+
+The next argument actually contains a fair bit more as it is for creating a secondary scale. For the X scale, the primary axis is on bottom of the plot, so the secondary axis is placed on the top. I decided to use this to add a duplicate axis with \textbf{dup\_axis} just to mark when the load started and stopped. Being a duplicate axis, everything would normally be inherited from the primary axis, but I wanted some changes. One is to remove the name, and the other two are to place "Load Start" and "Load Stop/End" at 0 seconds and \textbf{duration}, the length of the test period. It is likely not necessary now, but the reason I had the label set as "Load Stop/End" was because the Python script was not originally able to always stop the load at that time, but rather end its looping.
+
+The third part of this function is to set the Y scale, which is also continuous. You may notice the \textbf{name} argument is not set here, and that is on purpose. Not all of the graphs \textbf{themeSCALES} will be used with have the same measurements on the primary Y axis. However, they do use the same breaks and secondary axis, so I can have those set here and then call the \textbf{ylab} layer to change the scale name.
+
+The \textbf{breaks} are set to go from 0 to a one hundredth of \textbf{maxPWR} with a step of ten. The units may seem odd for that, but it actually does make sense, if you are overly cautious as I tend to be. The power/energy data is in milli-Joules or milli-Watts, so they are off by a factor of 1000 compared to what I want shown (normal Joules or Watts), but I get the upper limit here by dividing by 100 to ensure the breaks will always be longer than the data. It is possible to have the breaks end before the data does, and I wish to avoid that. Really my desire here is mainly to have the step be 10, so as long as the minimum and maximum will cover the range of the data, I will be happy.
+
+The \textbf{limits} argument is so one can manually set the upper and lower limits for the scale. I want the lower limit to be 0, so it will always be shown, but initially I did not have a way for setting the upper limit, as \textbf{maxPWR} is a relatively new addition to the script. Regardless, if you wish to fix one limit but not the other, the unfixed limit can be given the value "NA" and \textit{ggplot2} will interpret that to mean it should use the limit it determines from the data. As none of the data ever goes to 0, \textit{ggplot2} does not always include it, making this argument necessary.
+
+I covered how \textbf{expand} works with the X scale, and I do think \textbf{sec.axis} is reasonably clear here as well. I need the secondary axis to identify the frequency measurements, hence the \textbf{name} argument, and then to convert the breaks of the primary axis to the desired labels for this secondary axis, I have a function that will divide them by the \textbf{COEF} argument of the larger \textbf{themeSCALES} function.
+
+The fourth and final piece to this function is adding \textbf{COLORS} to the list, so the manual color scale I set is used. Technically I could just place the contents of \textbf{COLORS} into this function, removing the need for the separate object, but it should not matter much. I made the \textbf{COLORS} object before I made this \textbf{themeSCALES} function and do not feel the need to alter it.
+
+\subsection{graphMEAN Function}
+\begin{styleR}
+graphMEAN	=	function(COEF = FREQ.COEF)	{
+	ggplot(data = dataALL, aes(x=Time)) + 
+	ggtitle("Mean Frequency with Temperature and Power") + CAPTION +
+	TEMP_point() + 
+	SOCK_point() + 
+	FREQ_point(COEF = COEF, MEAN = TRUE) + 
+	themeSCALES(COEF) + ylab("Temperature (°C) and Power (W)")
+}
+\end{styleR}
+
+It took a while, but we finally have the first function to actually draw a graph. As the name suggests, \textbf{graphMEAN} will show the mean of the frequency data, which is most appropriate for multi-thread tests. The only argument for this function is \textbf{COEF} and it has \textbf{FREQ.COEF} as the default value.
+
+Within the body of the function we start with the \textbf{ggplot} command that opens a \textit{ggplot2} graph. Though this does not require any arguments, you are able to give it some that will then be inherited by every layer you add to the graph, which you do with the addition symbol. As they will be common across the layers, I give the \textbf{data} argument \textbf{dataALL} and set the \textbf{x} aesthetic to be "Time." Because I have set the value for \textbf{data} here, it is not necessary to set it in each of the layers, but if you go back you will see I did. That way I can neglect to set the value if I am experimenting with a new graph, but also change the data the layer function is to show. It was its own argument after all, so one could, theoretically, use different data.
+
+With the graph opened, the first two layers I add are both for identifying it properly, first with \textbf{ggtitle} and then the contents of \textbf{CAPTION}. It is possible to have the \textbf{caption} value set within \textbf{ggtitle}, using the \textbf{caption} argument, but I prefer it this way, possibly because at a time I had some issue with building it in. Regardless, the \textbf{ggtitle} command takes the first argument it is given to be the title of the graph, which I have written out.
+
+The next three layers are all calling functions I built before, and the order does matter. Each subsequent layer will be placed atop those before it, so \textbf{TEMP\_point} will be beneath \textbf{SOCK\_point} and both beneath \textbf{FREQ\_point}. The \textbf{FREQ\_point} function has two arguments set, with the first being the \textbf{COEF} value, so everything scales correctly. It gets this from what is passed to the larger graph function. The second argument establishes which version of the frequency data is desired, which is the mean in this case. Lastly, \textbf{themeSCALES} is supplied and the name for the Y scale is set with \textbf{ylab}.
+
+\subsection{graphMAX Function}
+\begin{styleR}
+graphMAX	=	function(COEF = FREQ.COEF)	{
+	ggplot(data = dataALL, aes(x=Time)) + 
+	ggtitle("Max Frequency with Temperature and Power") + CAPTION +
+	TEMP_point() + 
+	SOCK_point() + 
+	FREQ_point(COEF = COEF, MAX = TRUE) + 
+	themeSCALES(COEF) + ylab("Temperature (°C) and Power (W)")
+}
+\end{styleR}
+
+This \textbf{graphMAX} function is almost identical to \textbf{graphMEAN}, as the only difference is to show the maximum frequency across the threads, which is most appropriate for single or lightly-threaded tests. The graph's title is different and it is the \textbf{MAX} argument set to "TRUE" in \textbf{FREQ\_point}.
+
+\subsection{graphFREQ Function}
+\begin{styleR}
+graphFREQ	=	function(COEF = FREQ.COEF)	{
+	ggplot(data = dataALL, aes(x=Time)) + 
+	ggtitle("Frequency with Temperature and Core Power",
+		subtitle = "Even Thread: Physical, Odd Thread: Logical") + CAPTION +
+	TEMP_point() + 
+	# SOCK_point() + 
+	CORE_point() + 
+	FREQ_point(COEF = COEF) + 
+	facet_grid(rows = vars(Core, Thread),	switch = "y", labeller	=	
+		labeller(Core	=	function(IN) paste0("Core: ", IN), Thread	=	function(IN) paste0("Thread: ", IN))
+		) + 
+	themeSCALES(COEF) + ylab("Temperature (°C) and Power (W)")
+}
+\end{styleR}
+
+This thread graph function is really just a variant of the previous two, as \textbf{graphFREQ} uses facets to show all of the frequency data, rather than a summary statistic like \textbf{mean} or \textbf{max}. Only four things set this apart from the previous two functions, with the first being the addition of a subtitle for the graph. This is to clearly mark which threads are physical and which are logical. My understanding for the way Hyperthreading/SMT works is to place two threads on a physical core, with one having priority access to resources over the other. This higher priority thread is considered the physical thread, while the other is the logical thread. For this data, and I believe in general as well, when the thread ID numbers start at 0, the even threads are always the physical threads while the odd threads are the logical threads. From reviewing the data, it is clear this mapping to the physical cores is correct, even if the specific identity of the type of thread is not.
+
+As we are looking at per-thread data, it is appropriate to use the per-core power data, rather than the socket power measurements. For this reason \textbf{SOCK\_point} is disabled and \textbf{CORE\_point} is added.
+
+The next change is with \textbf{FREQ\_point} as neither the \textbf{MEAN} nor \textbf{MAX} argument is set. This means they are left to be "FALSE," their default values, so the layer returned by the function does not apply a summary statistic.
+
+The fourth change is the addition of \textbf{facet\_grid}, one of the two commands to create faceted graphs, with the other being \textbf{facet\_wrap}. The difference has to do with how the facets are placed, and I prefer \textbf{facet\_grid} for its ability to place the plots based on the grouping you set.
+
+The first argument I use is \textbf{rows}, which is to identify the column or columns from the \textbf{data} object to be used for grouping across the rows. There is a similar argument, \textbf{cols}, for grouping across columns in the graph, but I am not using it here. To identify the column or columns from \textbf{data}, the name must be given to the \textbf{vars} quoting function. In this case I want both the "Core" and "Thread" columns used, and the order does matter. It is read from left to right, so grouping by "Core" is done first and "Thread" second. As this information is unique (there is no thread 0 on core 5), the order does not matter for how the facets are placed, but it impacts how they are identified within the facet labels. With this order, the core is identified first, and then the thread.
+
+I think it would be wise to share I have seen some discussion concerning this notation, as the use of \textbf{vars} has been depreciated across the Tidyverse libraries, except for \textit{ggplot2}. Instead the other libraries use formula notation with the "\til" symbol separating the rows and columns. Personally, I disagree with removing \textbf{vars},\textbf{rows}, and \textbf{cols} here because it is very clear what it is and what it does. With the formula notation you must know how to properly interpret it, such as which side is for columns and which for rows, which is completely unnecessary with the \textbf{vars} formatting thanks to its verbose nature.
+
+The next argument I use is \textbf{switch} with the value "y." By default, the facet labels are placed on the right side of the graph, but I prefer them on the left. This function will switch that position be reflecting across the indicated axis, in this case "y." The default for facet columns is for the labels to be on top, so \textbf{switch} being set to "x" would work to place them on the bottom, and if you want both sets of labels moved, you can set the argument to "both."
+
+The third argument is the start of several more as \textbf{labeller} is for setting a labeller function, or multiple in this case. The idea is simple enough, to have a function applied to the default labels of the facets. It works by first identifying the facet group you want this function applied to, such as "Core." That then must be set equal to the function, and in this case I am writing the function in place. Though it would not be appropriate for facet labels, I could apply something like the \textbf{labelBreak} function, which was written already. In any case, my only purpose here is to clearly identify the meaning of the numbers, so this function applies \textbf{paste0} to place "Core:" ahead of the value. The second function is very similar, but for identifying the thread. We will see a more complicated labeller function later, for the histogram graphs.
+
+Lastly \textbf{themeSCALES} is applied as is \textbf{ylab}, just as they were in the \textbf{graphMEAN} and \textbf{graphMAX} functions.
+
+\subsection{graphPOWER Function}
+\begin{styleR}
+graphPOWER	=	function(COEF = FREQ.COEF)	{	
+	ggplot(data = dataALL, aes(x=Time)) + 
+	ggtitle("Frequency with Core and Uncore Power",	subtitle = "") + CAPTION +
+	FREQ_point(COEF = COEF) + 
+	unCORE_point() + 
+	CORE_point() + 
+	facet_grid(rows = vars(Core),	switch = "y", labeller	=	
+		labeller(Core	=	function(IN) paste0("Core: ", IN))
+		) + 
+	themeSCALES(COEF) + ylab("Power (W)") + expand_limits(y = c(0, 90))
+}
+\end{styleR}
+
+As the name suggests, this graph is to show power data, but on a per-core basis so the socket-power is not plotted. The temperature data is also not going to be shown, so none of the whole-CPU measurements shown previously are present. Like the previous graph though, \textbf{FREQ\_point} is present and will show the raw data. Layered above that will be \textbf{unCORE\_point} and \textbf{CORE\_point}. The uncore calculations are whole-CPU measurements, but have not been shared before and this is the best place for them, contextually.
+
+Coming to the \textbf{facet\_grid} layer, we can see it is similar to what was in \textbf{graphFREQ} but appreciably simpler as the thread is not used for grouping data. For the \textbf{CORE\_point} layer, this is acceptable as it cannot be grouped finer than that, while \textbf{FREQ\_point} will see two threads of data shown in each facet. One thread will be the physical thread and the other the logical thread, but I have not been successful in identifying which is which. There should be a means by which to use a different color or shape between these two thread types, but none of the methods I tried worked, and other means would likely overcomplicate the script more than is worth it.
+
+Coming to the final line, we see \textbf{themeSCALES} added and \textbf{ylab} applied as before, but now also \textbf{expand\_limits}. The purpose of this \textit{ggplot2} layer is to force scales to include certain values by expanding their limits. In this case I am specifying that the Y scale be expanded to include 0 and 90. I believe I may have had multiple reasons to include this that might not be relevant anymore, but for now it definitely should help make sure the Y-scale for these facets is not too dissimilar from that of the other graphs, which will show temperatures approaching 90 and socket power consumption likely over that.
+
+This next function is going to look like a bit of a mess, and it kind of is, but it also makes some of this work a lot easier.
+
+\subsection{graphHIST Function}
+\begin{styleR}
+graphHIST	=	function(TYPE, TITLE, X.name, X.break, X.limits, FILL.unit, FILL.mid, FILL.limits, FILL.breaks, binWID = 1, COEF = 1)	{
+	ggplot(data = dataALL, aes(x = get(TYPE)*COEF)) +
+	ggtitle(			TITLE,
+		subtitle	=	"Histograms & Box Plots with Red Mean Line"	) + CAPTION + 
+	scale_fill_gradient2(FILL.unit, low="blue", mid = "green", midpoint = FILL.mid,  high="red", limits = FILL.limits, breaks = FILL.breaks) + 
+	theme(
+		plot.title.position			=	"plot",
+		legend.position				=	"bottom",
+		legend.justification		=	"left",
+		legend.margin				=	margin(t = -2, b = -2, l = -2, unit = "lines"),
+		legend.key.width			=	unit(0.045, "npc")
+		) + 	
+	geom_boxplot(outlier.alpha = 0, 				coef = 0,	width = Inf,	position = position_nudge(y = 0.5)) + 
+	geom_histogram(aes(y = after_stat(ncount),	fill = after_stat(x)),	binwidth = binWID) + 
+	geom_boxplot(outlier.alpha = 0, alpha = 0.15,	coef = 0,	width = Inf,	position = position_nudge(y = 0.5)) + 
+	geom_vline(data = aggregate(dataALL[, TYPE], GROUPS, mean, na.rm = TRUE),	aes(xintercept = get(TYPE)*COEF), 	color = "red") +
+	# facet_grid(rows = vars(Period), switch = "y", labeller = labeller(Period = label_wrap_gen(20))) +
+	facet_grid(rows = vars(Period), switch = "y",
+		labeller = labeller(Period = function(IN) gsub(" - ", "\n", IN))
+		) +
+	scale_x_continuous(
+		name	=	X.name,
+		breaks	=	seq(0, 10000, by = X.break),
+		limits	=	X.limits,
+		guide 	=	guide_axis(n.dodge = 2),
+		expand	=	c(0.02, 0)
+		) + 
+	scale_y_continuous(name = "", breaks = NULL)
+}
+\end{styleR}
+
+That is certainly a lot, but all of it has an important purpose, even the commented out line, for creating regular histograms for the different measurements. Rather than copying this body of code for each histogram I want, I made this function so I knew most of the formatting across them would be identical, and whatever differs would be easy to tweak. If that code looks messy, consider trying to find a single value within it, and then having to find and alter it in another block of similar code. Though this is more complicated, the concept is not different from the graph functions I have in my game performance scripts. (And one graph in the GPU Thermal script is considerably more complicated than this, but I do not believe that graph would be as useful here.)
+
+Starting with the arguments, the first two establish what the resulting histogram will be covering. First \textbf{TYPE} is to establish what measurement we are working with, such as "CPU\_Temp," and it must be presented as a string. Looking within the function, we see the \textbf{get} function being given \textbf{TYPE} as that is how R can recognize the string refers to an object for \textit{ggplot2} to use. The \textbf{TITLE} argument should be fairly self-explanatory and goes along with my use of \textbf{ggtitle} in prior graphs.
+
+The next three arguments, \textbf{X.name}, \textbf{X.break}, and \textbf{X.limits} are a bit more involved, but not too bad. They are for setting certain scale characteristics for the X scale specifically. Obviously \textbf{X.name} identifies the name for the scale. The \textbf{X.break} value is used within a \textbf{seq} function to set the step between breaks along that scale. For temperature data I use a step of 5 while frequency is at a more appropriate 200. I think \textbf{X.limits} is also clearly named; a way to set what the upper and lower limits should be for the X scale. If you do not wish to set these, a value of "NULL" can be used and \textit{ggplot2} will decide for itself.
+
+The \textbf{FILL.unit}, \textbf{FILL.mid}, \textbf{FILL.limits}, and \textbf{FILL.breaks} might not be as obvious as to their purpose. I decided I wanted to be a little fancy with these graphs by having a gradient extend from lower values to higher values on the X scale, but to do so requires identifying the colors to be used, as well as some characteristics for the associated legend. Both \textbf{FILL.unit} and \textbf{FILL.breaks} are for the legend, with the first identifying the unit, such as "°C" or "MHz", while the second is for the breaks shown within the legend. As it is showing a gradient, the legend does need a scale itself. Unlike \textbf{X.break} though, \textbf{FILL.breaks} does need a complete list, and not just the step for a list generated within the function.
+
+Within \textbf{graphHIST} I use the \textbf{scale\_fill\_gradient2} layer to build this gradient, and what is special about this type of scale is it allows for more than just a low and high color, but also a midpoint color. I have it set to use "blue," "green," and "red" for the \textbf{low}, \textbf{midpoint}, and \textbf{high} colors respectively, and while it can figure out the first and last are from the limits, it does need to know what value the midpoint should be at. That is the purpose of \textbf{FILL.mid}, to identify the value that corresponds to "green," and that is a value that can involve manual tweaking for the best appearance. Some of these measurements have normal, average values that are not going to be exactly between the lower and upper limit, making it appropriate to select a midpoint near that. The \textbf{FILL.limits} argument is obviously for these lower and upper limits, but like \textbf{X.limits}, you can use "NA" values to allow \textit{ggplot2} to do its own thing.
+
+Getting into the body of the function now, I have already touched on some of it, so I can skip ahead a bit. I do want to clarify the purpose of \textbf{COEF} though, as it is different from \textbf{FREQ.COEF}. Its purpose here is to correct units, such as going from mW to W, and potentially MHz to GHz, though I do consider MHz the more appropriate unit. That is why it is multiplied by the data and not used in the scales.
+
+After opening the graph, setting the titles, and building the gradient scale, we come to \textbf{theme} where, like earlier, I have the title position set to be the upper left corner of the larger plot frame, rather than aligned with the faceted plots. The remaining arguments here are for manipulating the legend, but are a bit different than seen before, especially \textbf{legend.margin}. Basically it boils down to this, I want the legend for the gradient placed underneath the plots, on the left side, which is opposite the caption. The problem is the blocking frame for these two objects will normally intersect, forcing one down instead of existing on the same horizontal line. By setting the top (\textbf{t}), bottom (\textbf{b}), and left (\textbf{l}) margins to be negative, and altering the \textbf{key.width} value, I have removed this collision. In theory a very long caption could prove problematic, but I doubt a caption will ever get that long.
+
+Next we have the six data layers, starting with the first of two almost identical \textbf{geom\_boxplot} calls. The only difference between them is the second is mostly transparent. You see I want to show the box plots on top of the \textbf{geom\_histogram} layer, but I also do not want to obscure the histogram. My solution here and elsewhere is to double the box plot layers, with the lower layer having full opacity, and the upper layer being mostly transparent, ensuring the histogram is visible and the box plot does not suffer from being transparent where the histogram is not present.
+
+Looking inside of the \textbf{geom\_boxplot} layers now, we have five arguments to address, with the first being \textbf{outlier.alpha}. Normally the box plot will show points indicating outliers, but I am not interested in these. By setting the outliers' alpha to zero, the points are made invisible. The second argument is the more generic \textbf{alpha} that applies to the fill of the box plot. The next argument, \textbf{coef} is for setting the length of the whiskers on the box plot, that normally stretch to extreme values in the data. Like the outliers, I have no interest in these as my desire is just to show the median and quartiles, so I set this to zero and remove the whiskers.
+
+The \textbf{width} argument is set to "Inf," which is a special word for R, like "NULL," though it means infinite. It may seem odd to want the box plots to be infinitely wide, but that is not quite what is happening here. In this context, \textit{ggplot2} is simply being told to have the box plot reach from one side of the plot to the other, but even that is not the full story here. The box plots are actually along the horizontal axis, like the histogram, so the width here is actually the vertical height, when looking at the graph. By using "Inf" here, the box plot stretches from the top of each faceted plot to the bottom, fully crossing the histogram. For marking the quartiles and median, I feel this is the best design.
+
+Lastly we have \textbf{position} and \textbf{position\_nudge} and this can also use some explanation. Basically \textit{ggplot2} always tries to position box plots in line with some value. As most of the time a box plot would be on a discrete scale, it will be on the line for the relevant break, but I am using a continuous scale. In this situation the box plot is to be placed on the zero, which will push the Y scale to show negative values, even though they have no meaning here. By applying a nudge of 0.5, this shifts the box plot up so its lower edge (not the lower quartile) will be along 0, instead of -0.5 as would be the norm. Leaving the nudge at zero with the width set to "Inf" does not appear to present any issue, but I would still prefer to have the full solution.
+
+Next we have the actual \textbf{geom\_histogram} layer that is the whole point of this graph. For my purpose here, it has just three arguments, with two among the aesthetics. The first is the \textbf{y} argument, indicating what data should be plotted on the Y scale, but it is not quite as simple as that. The default behavior of \textbf{geom\_histogram} is to plot the count of values in each bin, but that is not quite what I want. You see, I actually have no interest in the specific Y values, but the relative values. For that reason, I want to use a normalized count, identified as "ncount" (or normalized density, "ndensity," which produces an identical result here). This normalization makes the peak come to 1, regardless of any of the other values, and that regularity makes aligning the box plot on the histogram much easier. It also makes comparing the facets for each period easier, as they will all have the same height.
+
+To get this normalized value though, \textit{ggplot2} must be told to evaluate this aesthetic value after it has computed "ncount," which is why the \textbf{after\_stat} command is used. The default is \textbf{start}, which means the aesthetic will be evaluated before any stats are calculated. The third and final time evaluation can be done is \textbf{after\_scale}, which can be useful if you wish to use a variant of a stat used in one aesthetic in another aesthetic.
+
+The second argument is another aesthetic, this time \textbf{fill} and is how I apply the gradient I described earlier. I want the fill to change based on the "x" value, but as \textit{ggplot2} will only know what those values are after doing its computations, \textbf{after\_stat} must be used here as well.
+
+The third and final argument is \textbf{binwidth} and controls exactly what it sounds like. Histograms work by counting the number of values that fall into certain bins, or the density of those values. Either way, this makes it important to have a means of controlling the bins, and while there are many options offered by \textit{ggplot2}, my preference for this situation is to set how wide these bins are. By default the width is one and I see no reason to alter this. Initially I did use wider bins for some data, to keep the plots from appearing too noisy, but found this introduced aliasing artifacts. These artifacts do not occur with a width this narrow.
+
+Next we have something that took me too long to figure out the elegant solution there now. The idea is to place red lines on the individual histograms marking the mean values, but this is not something \textit{ggplot2} wants to do cleanly. It mostly can, finding the mean or other statistic from the data, and separate them for the facets, but it seems it is unable to then plot the result vertically. An odd issue, but to be fair, such vertical lines and design are likely not too common. In any case, originally I had three separate layers to do this and spent a long time trying different methods to get it to be done cleanly before I realized I could turn to \textbf{aggregate}.
+
+To draw a vertical line, all the layer needs to know is the \textbf{xintercept}, but for it to be properly drawn across the facets the values need the appropriate period. The \textbf{aggregate} function will give exactly that, so I just need to make sure this layer is able to access it correctly. First \textbf{data} needs to be changed to be the output of \textbf{aggregate}. For its arguments it first needs the data to be acted on, which can be selected with the \textbf{TYPE} argument being passed as the column name in bracket notation. Though I rarely ever use it this way, bracket notation can be given the desired column or row names as strings to select them. For the grouping terms I have brought back \textbf{GROUPS} from the beginning of this script. This does mean there will be unnecessary groupings, but they will be ignored because they are not used. This also gives an element of future-proofing, if this script is ever expanded to support working with multiple configurations at the same time. The faceting, which is next, will need to be changed for everything to work properly, but this layer will be set. It also looks cleaner then writing out the list \textbf{aggregate} wants.
+
+Finishing off the \textbf{aggregate} function then is passing it the \textbf{mean} and the additional argument of \textbf{na.rm}, which will go through to the summary statistic to ensure "NA" values will not be a problem, though there should not be any. After that we just need to see the \textbf{xintercept} aesthetic to properly get the \textbf{TYPE} argument, which will be the name used for the \textbf{mean} output from \textbf{aggregate}, and lastly \textbf{color} is set to be red.
+
+Next we have a couple applications of \textbf{facet\_grid}, though one is commented out. The reason I have left the disabled code is to have a working example of the \textbf{label\_wrap\_gen} feature that will have \textit{ggplot2} automatically wrap the text of labels. By providing a length, in this case 20, this will set an upper limit for when the text needs to be wrapped to a new line. The default length is 25, which was a little too long. However, I prefer a different solution for label wrapping that provides me with better control, which is why the other call to \textbf{facet\_grid} is active.
+
+If you go back quite a bit, you will see I have dashes separating elements of the test period's name. I take advantage of that with the active labeller function I am using by replacing every instance of the dash with a line break. This way each element is on its own line, making it easier to read and understand. The one exception currently is for the Prime95 test, as there are no dashes placed in that name, so it is written on a single line. That could prove a problem if the height of the histogram outputs is not great enough, but simply changing the \textbf{TESTname} value in "CPU Thermal.py" to include a dash will solve this.
+
+Before moving on, I should mention the faceting is done on the "Period" value, so there will be three plots within this graph, separating the data of the Warm-up, test, and Cooldown periods. These are presented on separate rows, for easy comparison along the X scale, and the labels are placed on the left side, rather than the default of being on the right. This is also where a change will be necessary if multiple configurations are used, as those extra variables will need to be added here. Unfortunately I am not aware of a means to place them there currently, as the labels for each will be written even though they will not be necessary.
+
+With the faceting taken care of, we next have the creation of the scales. The first of these is \textbf{scale\_x\_continuous}, which gets its name, step between breaks, and limits from the \textbf{graphHIST} arguments. The limits for the breaks go from zero to 10,000, which is a wide enough range to ensure the scale will not be without breaks. I have previously explained how \textbf{expand} works, but not the \textbf{guide} argument, which is actually also here so I have a working example.
+
+Back when I covered the \textbf{labelBreak} function I mentioned \textit{ggplot2} gained the ability to place labels onto separate lines, to avoid overlapping. While there are certainly cases where my function I believe is better, mainly when I want to ensure 0 is not moved, I wanted to learn how \textbf{guide\_axis} works with the \textbf{n.dodge} argument. This is the built-in function and argument that will apply line breaks to avoid overlapping of labels. As I do not need to be concerned about the placement of a 0 label on this graph, because, if present, 0 will only ever be the first label, I am using it here.
+
+The last bit for this function is to basically remove the Y scale with \textbf{scale\_y\_continuous}. The name is an empty string and \textbf{breaks} is set to "NULL" so nothing will be drawn for this scale. As I said earlier, the specific values on the Y scale are not important to me, just the relative values, or rather the shape of the distributions within the histograms. Rather than take up any space for scale labels or breaks then, I disable them.
+
+\subsection{FREQspec\_line Layer Function}
+\begin{styleR}
+FREQspec_line	=	function(FREQ	=	FREQspec)	{
+	if	(!is.numeric(FREQ))	return(NULL)
+	
+	FREQdata	=	list(
+		Period	=	ordered(levsPER[1], levsPER),	x	=	FREQ,	y	=	Inf,
+		TEXT	=	FREQ,
+		ECDF	=	round2(ecdf(dataALL[dataALL$Period == TESTname, ]$Frequency)(FREQ))
+		)
+		
+	list(geom_vline(
+			xintercept	=	FREQ,
+			color		=	"black",
+			linetype	=	"dashed"
+		), 
+		geom_text(data	=	data.frame(FREQdata),
+			aes(x = x,	y = y,	label = TEXT),
+			vjust	=	-0.5
+		),
+		coord_cartesian(clip = "off")
+	)
+}
+\end{styleR}
+
+This is a final layer function before getting to building the histogram graphs and is here because it is only relevant for the frequency histogram. Its purpose is to draw lines marking the base and boost frequencies of the CPUs, hence the name \textbf{FREQspec\_line}, and while technically these could also be drawn on other graphs showing the frequency data, I think they show enough as is and this information would be most appropriate here.
+
+Naturally the argument, \textbf{FREQ} is given the default value of \textbf{FREQspec}, but just in case it lacks data, the first line checks and will return "NULL" if there is nothing to draw. After this check, the \textbf{FREQdata} list is created that will store the information not for drawing the lines, but placing text labels for them. The way I have this list written is definitely odd compared to how I normally build them, but there is logic to it. The first three elements are all written on the same line and start with the "Period," which will be an ordered factor of just the first element from \textbf{levsPER}, though the levels will contain the complete \textbf{levsPER}. The Warm-up period, which is the first period, will be the top facet and I want the text placed above it, which will involve some trickery, but that will be later. The "x" value is then set be \textbf{FREQ} and "y" set to be "Inf," which is part of the trickery to place the text above the top facet, almost like it were a secondary scale. If I could arbitrarily add a secondary axis that would be ideal, but that is not possible because one cannot inject arguments into already created layers; instead one must add new layers that do not conflict with the previous ones. Anyway, by using "Inf" like this, the vertical position of the text will be at the top of the scale, regardless of what that value is.
+
+As those three elements are all mostly fixed and should not require any tweaking in the future, I placed them on the one line. The next element is "TEXT" and it will hold the text and so is given \textbf{FREQ}. Lastly is the "ECDF" element that goes unused, but could be fun to have in the future. My thinking was to write what the percentages are for these frequencies on the graph, but I do not care for the resulting visual and have not thought of a good solution. The information is in the TXT output though, so it is not as though the information cannot be accessed.
+
+The last bit is another list, this one holding the different \textit{ggplot2} layers to add. The first places the vertical lines at the values in \textbf{FREQ} and makes the line dashed and black. The second places the text and uses \textbf{FREQdata} as its data argument. The aesthetics then draw on the "x" and "y" values of that list created earlier while \textbf{label}, what is to be written, is "TEXT." Even though this layer will be added after \textbf{facet\_grid}, it will still be faceted correctly, following the \textbf{FREQdata} "Period" value. The final trick for getting the text placed above the top facet is the \textbf{vjust} argument with its -0.5 value. I believe the default is to center align text, vertically and horizontally, which corresponds to a numerical value of 0.5. Top aligned would be 1 and bottom aligned is 0, so with -0.5 the alignment is being done at a point below the line of the text. This means the text will be pushed up, above the Y value it has been given, which in this case means above the plot itself.
+
+Normally contents outside a plot will be clipped and not shown, but there is a way to change that. The final bit here is a call to the powerful \textbf{coord\_cartesian} layer that allows for many manipulations of a graph's scales. In this case I have it set to disable clipping, ensuring the text is drawn.
+
+With that done, we can get to calling \textbf{graphHIST} and building the separate histograms I want.
+
+\subsection{Histogram Constructions}
+\begin{styleR}
+#Temperature
+HIST.Temp		=	graphHIST(
+	TYPE		=	"CPU_Temp",
+	TITLE		=	"CPU Temperature Normalized Distribution by Period",
+	X.name		=	"Temperature (°C)",
+	X.break		=	5,
+	X.limits	=	c(0, NA),
+	FILL.unit	=	"°C",
+	FILL.mid	=	60,
+	FILL.limits	=	c(25, 95),
+	FILL.breaks	=	seq(30, 90, by = 10)
+	)
+
+#Frequency
+HIST.Frequency	=	graphHIST(
+	TYPE		=	"Frequency",
+	TITLE		=	"Frequency Normalized Distribution by Period",
+	X.name		=	"Frequency (MHz)",
+	X.break		=	200,
+	X.limits	=	c(round(min(dataALL$Frequency)-500, -3), NA),
+	FILL.unit	=	"MHz",
+	FILL.mid	=	3000,
+	FILL.limits	=	c(round(min(dataALL$Frequency)-500, -3), maxCLK),
+	FILL.breaks	=	seq(0, 10000, by = 500)
+	)	+	FREQspec_line(FREQspec)
+
+#Socket Power
+HIST.Socket		=	graphHIST(
+	TYPE		=	"Socket_Energy",
+	TITLE		=	"Socket Power Normalized Distribution by Period",
+	X.name		=	"Power (W)",
+	X.break		=	10,
+	X.limits	=	c(0, NA),
+	FILL.unit	=	"W",
+	FILL.mid	=	80,
+	FILL.limits	=	c(0, nearCEIL(maxPWR/1000 + 1, 30)),
+	FILL.breaks	=	seq(0, nearCEIL(maxPWR/1000 + 1, 30), by = 30),
+	COEF		=	1/1000,
+	binWID		=	0.1
+	)
+
+#Core Power
+HIST.Core		=	graphHIST(
+	TYPE		=	"Core_Energy",
+	TITLE		=	"Core Power Normalized Distribution by Period",
+	X.name		=	"Power (W)",
+	X.break		=	1,
+	X.limits	=	c(0, NA),
+	FILL.unit	=	"W",
+	FILL.mid	=	3,
+	FILL.limits	=	c(0, nearCEIL(dataALL$Core_Energy/1000, 3)),
+	FILL.breaks	=	seq(0, nearCEIL(dataALL$Core_Energy/1000, 5), by = 3),
+	COEF		=	1/1000,
+	binWID		=	0.01
+	)
+
+#Uncore Power
+HIST.Uncore		=	graphHIST(
+	TYPE		=	"Uncore_Energy",
+	TITLE		=	"Uncore Power Normalized Distribution by Period",
+	X.name		=	"Power (W)",
+	X.break		=	5,
+	X.limits	=	c(0, NA),
+	FILL.unit	=	"W",
+	FILL.mid	=	30,
+	FILL.limits	=	c(0, nearCEIL(dataALL$Uncore_Energy/1000, 5)),
+	FILL.breaks	=	seq(0, nearCEIL(dataALL$Uncore_Energy/1000, 5), by = 15),
+	COEF		=	1/1000,
+	binWID		=	0.01
+	)
+\end{styleR}
+
+I do not think there is much need to go through each of these as they are mostly running \textbf{graphHIST} with different argument and saving the results to an appropriately named object. Only \textbf{HIST.Frequency} is a little interesting because of the addition of \textbf{FREQspec\_line} after \textbf{graphHIST}. This is the most appropriate way to add that layer as it has no relevance for the other graphs, and so will be limited to that one.
+
+There are some other particularly that might be worth touching on though, such as the curious use of \textbf{round} in \textbf{HIST.frequency} where it is given a negative value for the rounding term. It actually makes a fair amount of sense as the negative value means the function should round so many places to the left of the decimal point, instead of the right. In the two cases we see here it is rounding to the nearest thousand. Combined with the subtraction of 500 MHz from the minimum, this will always round to the nearest thousand below the minimum, ensuring all the data is shown without having to set a fixed minimum. I do not see any value to ensuring 0 is shown on this graph as no CPU actually goes to 0 MHz. All of the other histograms however do go down to 0, as it is appropriate for those measurements. You can also see I make use of \textbf{nearCEIL} to ensure the upper limits are enough for some of the graphs, but nothing too fancy.
+
+All that remains now are the calls to functions to actually save the outputs, starting with the text outputs.
+
+\subsection{Text Output Saving}
+\begin{styleR}
+sinkTXT()
+sinkHTML()
+\end{styleR}
+
+As everything concerning the TXT and HTML outputs are held within those two functions all that is necessary is to call them to have those outputs made.
+
+\subsection{Frequency Summary Graph Saving}
+\begin{styleR}
+if	(MULTI)	{
+	message("Frequency - Mean")
+	customSave("Frequency - Mean",	plot = graphMEAN())
+}	else	{
+	message("Frequency - Max")
+	customSave("Frequency - Max",	plot = graphMAX())
+}
+\end{styleR}
+
+This block of code is to make sure just the appropriate graph is made, based on if the test was multi-threaded or not. If \textbf{MULTI} is "TRUE," then the mean of the thread frequencies will be saved and both the name of the graph and message written in R will identify the graph type. If \textbf{MULTI} is "FALSE," then the version of the graph showing the maximum frequency will be used instead. Without the \textbf{message} function here, there would be no way from the R console window to know what it is working on.
+
+\subsection{Faceted Graphs Saving}
+\begin{styleR}
+message("Frequency")
+customSave("Frequency", 		plot = graphFREQ(),		height	=	2 * length(unique(dataALL$Thread)))
+message("Core Power")
+customSave("Core Power",		plot = graphPOWER(),	height	=	2 * length(unique(dataALL$Core)))
+\end{styleR}
+
+As \textbf{graphFREQ} and \textbf{graphPOWER} can both produce a significant number of facets, depending on the number of threads and core respectively, I decided to have the height of the output be dependent on those values. There are certainly multiple ways to get the same result, but I decided to work from the factor levels of the appropriate columns in \textbf{dataALL}, getting the number of them and then doubling that for \textbf{height}. The \textbf{width} value will \textbf{gWIDTH} by default, which is 16 unless altered in the Input script.
+
+I should also acknowledge that the new automated method for calculating \textbf{FREQ.COEF} does have a weakness as it appears to be too great for these two graphs with their column of facets, at least for some of the data I have. Fortuntely the fix is quite easy, though it does require editing the specific Output.r scripts. These two graph functions have \textbf{COEF} as their argument, and by default it is \textbf{FREQ.COEF} so by passing a different value here, the outputs will be changed.
+
+\subsection{Histogram Graphs Saving}
+\begin{styleR}
+message("Temperature by Period")
+customSave("Hist - Temperature",	plot = HIST.Temp,		width	=	gHEIGH * 1.25)
+message("Frequency by Period")
+customSave("Hist - Frequency",		plot = HIST.Frequency,	width	=	gHEIGH * 1.25)
+message("Socket Power by Period")
+customSave("Hist - Socket",			plot = HIST.Socket,		width	=	gHEIGH * 1.25)
+# message("Core Power by Period")
+# customSave("Hist - Core",			plot = HIST.Core,		width	=	gHEIGH * 1.25)
+# message("Uncore Power by Period")
+# customSave("Hist - Uncore",			plot = HIST.Uncore,		width	=	gHEIGH * 1.25)
+\end{styleR}
+
+The histograms have the \textbf{gHEIGH} value remain what is set in the Input script, but change \textbf{width}. By multiplying the default height by 1.25, the output will have a 5 to 4 aspect ratio, which I believe looks appropriate for these graphs. We can also see here that calling the objects I assigned the histograms to is enough for \textbf{customSave} to work. The core and uncore power histograms are commented out because I am unsure how useful and informative those graphs are, but they may still prove interesting, so I want to keep the code to generate them. Just removing the commenting symbol is all that is necessary to have these produced.
+
+And with that, this "CPU Thermal – Output.r" script is finished.

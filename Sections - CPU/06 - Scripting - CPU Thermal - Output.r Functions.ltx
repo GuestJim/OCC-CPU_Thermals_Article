@@ -1,0 +1,263 @@
+\section{Scripting: CPU Thermal - Output.r (Functions)}
+
+The final and largest of these scripts is the Output.r script, which handles all of the processing for summary statistics and graphs, as well as creating the various output files. For how much it does, its size is not that surprising. Like the game performance version of this script, there are three main sections to it, with the first containing the majority of the functions for processing the data, while the later two sections are for producing the text and graph outputs.
+
+\subsection{labelBreak and Formatting Functions}
+\begin{styleR}
+labelBreak	=	function(breaks, SEC = FALSE, r = 2)	{
+	if (!app.BREAK)	return(breaks)
+	if (is.numeric(breaks))	breaks	=	round(breaks, r)
+	BREAK	=	c("", "\n")
+	if	(is.numeric(breaks)	&	0 %in% breaks)	if	((which(breaks %in% 0) %% 2) == 0)	BREAK	=	rev(BREAK)
+	if	(!SEC)	return(	paste0(rep(BREAK, length.out = length(breaks)),	breaks)	)
+	if	(SEC)	return(	paste0(breaks, rep(BREAK, length.out = length(breaks)))	)
+}
+#	can be disabled by setting app.BREAK to FALSE
+
+sci2norm	=	function(DATA)	format(DATA, scientific = FALSE)
+rem_		=	function(INPUT)	gsub("_", " ", INPUT)
+round2	=	function(DATA, r = 2)	{
+	numCOL		=	sapply(DATA, is.numeric)
+	DATA[numCOL]	=	round(DATA[numCOL], r)
+	return(DATA)
+}
+\end{styleR}
+
+Each of these functions serve formatting purposes, which is why I have them in other Output scripts I have created. The first function, \textbf{labelBreak} is one I am rather proud of because it addresses something fairly important, and I developed it prior to \textit{ggplot2} gaining its own ability to do part of what this accomplishes. The purpose is to apply line breaks to axis labels on graphs, making it possible for graphs to be narrower without labels writing over each other. Its first argument is whatever the graph's breaks are, hence the name. The second argument is to control if it is being applied to a secondary axis, as the vertical alignment for the label text changes based on this. The primary X axis is aligned at the top, so a line break at the start of the label pushes its contents down, while the secondary axis is aligned at the bottom, making a line break at the end necessary to move the text. The third argument is to control how much numerical values should be rounded, and by default it is to two digits.
+
+Within the function the first line is a check on \textbf{app.BREAK}, a Boolean set in the Input script to allow you to disable the effects of this function, so it will simply return the breaks as it had received them.
+
+The second line checks if the contents of \textbf{breaks} are numeric with the \textbf{is.numeric} function. If they are, then they will be rounded, and if they are not then the function continues.
+
+The next line is where work on actually applying the line breaks starts by creating the \textbf{BREAK} object, a two-element vector with one element being an empty string and the other a line break. This vector will be repeated and concatenated onto the \textbf{breaks} list to apply the line breaks to each element as needed.
+
+The next line is a little wonky, but is also important as it is what distinguishes this function from what is now available within \textit{ggplot2} for dodging labels onto multiple lines. It first checks if \textbf{breaks} consists of numbers and if 0 is among its elements. If both conditions are met, then it will determine if the 0 is in an odd or even position. If it is in an even position, found by checking the modulus of the index and 2, then the \textbf{BREAK} vector made earlier will be reversed, so the odd labels get a line break while the even ones are left untouched. I wish to protect the 0 from being moved and this achieves that.
+
+After that check, we then have a couple checks I really could have made into a single \textbf{if...else} statement, but I want to be clear and explicit here. If the \textbf{SEC} argument is "FALSE," indicating this is for the primary axis, then a repeated \textbf{BREAK}, will be attached to the front of the \textbf{breaks} object. If this is for a secondary axis though, then the repeated \textbf{BREAK} will be attached at the end. To repeat \textbf{BREAK} I use the appropriately named \textbf{rep} function with its \textbf{length.out} argument. With that argument the object provided to the function will simply be repeated enough times to match the desired length. This way it is possible to ensure the length matches that of \textbf{breaks}.
+
+The next three functions are less complicated as \textbf{sci2norm} ensures numbers are not written in scientific notation and \textbf{rem\_} removes underscores from its \textbf{INPUT}. The third function, \textbf{round2} is not that complicated but appears to be, to handle a specific but not uncommon situation. It is really just a wrapper for the \textbf{round} function with the default of rounding to two digits after the decimal point. Before it does this rounding though, the \textbf{sapply} function is used to run a function on each column of \textbf{DATA}, determining if they are numbers or not. One of my favorite functions in R is the \textbf{aggregate} function that can find identified groups in a large data set and apply some summary function to each of them, such as \textbf{mean} or \textbf{median}. The output of \textbf{aggregate} will have columns containing strings, identifying the groups within the data, which \textbf{round} cannot be run on, making it necessary to check for which columns are numbers, and which are not.
+
+Once the \textbf{numCOL} list is made, just those columns can be selected using square bracket notation, and then just the contents of those columns are rounded. The rounded values are then assigned back to those columns and the whole object is returned by \textbf{round2}.
+
+\subsection{maxPWR, maxCLK, and FREQ.COEF Creation}
+\begin{styleR}
+nearCEIL	=	function(DATA, VAL)	ceiling(max(DATA, na.rm = TRUE) / VAL) * VAL
+nearFLOOR	=	function(DATA, VAL)	floor(max(DATA, na.rm = TRUE) / VAL) * VAL
+
+maxPWR		=	nearCEIL(dataALL$Socket_Energy,	5000)
+maxCLK		=	nearCEIL(dataALL$Frequency,		500)
+if	(!is.numeric(FREQ.COEF))	FREQ.COEF	=	signif(exp(round(log(maxPWR/maxCLK / 1000), 0)), 1)
+\end{styleR}
+
+This block of code serves a few purposes and I think looks more complicated than it really is. At the start I create two functions that I wish directly existed in R. The idea is to round to the nearest multiple of some value, though more specifically round up or round down to the nearest. The \textbf{round} function is able to round to the nearest power of ten, including those greater than one by passing it a negative value for the number of digits, while the \textbf{ceiling} and \textbf{floor} functions, that round up and down respectively, only go to the nearest integer. My solution is to take the maximum of the \textbf{DATA} argument, ignoring any NA values, and divide it by the \textbf{VAL} argument. This result then has the normal \textbf{ceiling} or \textbf{floor} function applied to it before being multiplied by \textbf{VAL}.
+
+As it turns out only \textbf{nearCEIL} is used in this script, and we can see it applied to create the \textbf{maxPWR} and \textbf{maxCLK} variables. As the names suggest these are maximum power and clock values, but rounded up to the nearest 5 W (5000 mW) and 500 MHz, which are steps I feel are appropriate for these values.
+
+The next line is a bit complicated but actually works quite well. It is the line that will create the \textbf{FREQ.COEF} value, if it was not already set in the Input script. Quick reminder, \textbf{FREQ.COEF} is the coefficient for the frequency scale so that data can be shown along with the other measurements. First it checks if the variable already has a numeric value or not and then it does a combination of rounding methods, applying the natural logarithm and applying the exponential function to undo the logarithm. I did originally have a simpler means of automatically calculating \textbf{FREQ.COEF}, but it so often gave an undesirable value that I then needed to tweak manually anyway. What I realized while looking at the values I would manually settle on is they followed an exponential curve, so I decided to experiment with that.
+
+Starting from the inside, the first step is dividing \textbf{maxPWR} by \textbf{maxCLK}, and then that value by 1000 to convert from mW to W. Though this may not be the case for less powerful CPUs, the maximum power draw of a CPU should be the highest value on the scale that shows that and the CPU temperature, making it appropriate for basing the scaling of the frequencies with. The natural logarithm is then calculated using the \textbf{log} function. (For those wondering, the base 10 logarithm is \textbf{log10}. Using "log" for the natural logarithm as opposed to "ln" is common in higher levels of math because it is more commonly used than "log10.")
+
+The result of the logarithm is then rounded to the nearest integer before the exponential function is applied to undo the logarithm. This rounding is the key to what I am after. Remember what I said about realizing the desired \textbf{FREQ.COEF} values following an exponential curve? This rounding is putting us on the nearest integer on that curve. Of course the data itself is not logarithmic, which is why the exponential function undoes that, and then we have another rounding function applied; \textbf{signif}.
+
+Significant figures is an important concept in the reporting of measurements, even though I tend not to worry about them much. Significant figures are those places you have confidence in, so if you can measure a length with confidence to the nearest millimeter, even if your measurement goes to micrometers, those sub-millimeter digits are not significant figures. Another way to put it, not concerned about precision and accuracy of measurements, is significant figures are the digits shown when writing in scientific notation, where there is one integer and so many digits after the point. I want to put it that way because I am using \textbf{signif} here to get just that first digit; that integer for scientific notation. The result from \textbf{exp} will be a small fraction, which makes \textbf{round} inappropriate to use because it rounds to the nearest place while \textbf{signif} will round to the nearest value. The end result is then is the nearest value from the exponential curve the best \textbf{FREQ.COEF} values come from, but transformed for the linear (not-logarithmic and not-exponential) data. By the way, I originally developed this \textbf{FREQ.COEF} calculation with the GPU Thermal scripts, so it does work for more than CPUs and their ranges of powers and frequencies.
+
+\subsection{stats Function}
+\begin{styleR}
+stats		=	function(DATA)	{
+	return(c(
+		Min		=	min(DATA,		na.rm	=	TRUE),
+		Median	=	median(DATA,	na.rm	=	TRUE),
+		Mean	=	mean(DATA,		na.rm	=	TRUE),
+		Max		=	max(DATA,		na.rm	=	TRUE)
+	)	)
+}
+\end{styleR}
+
+Nothing too special here as \textbf{stats} is simply a function I made so multiple other functions can be run at the same time. It is not dissimilar to the \textbf{summary} function built into R, which also provides quartiles I am not interested in, at least for where \textbf{stats} is applied. Besides lacking the quartiles, this function also has names for the statistics I control, which can be advantageous later on, when processing the results.
+
+
+\subsection{sepCOL and remUNI Functions}
+\begin{styleR}
+sepCOL	=	function(aggOUT)	{
+	matCOL	=	sapply(aggOUT, is.matrix)
+	out		=	aggOUT[, !matCOL]
+	for (FUN in which(matCOL))	{
+		DATA			=	as.data.frame(aggOUT[, FUN])
+		colnames(DATA)	=	paste(colnames(aggOUT)[FUN], colnames(DATA), sep = " - ")
+		
+		out	=	cbind(out, DATA)
+	}
+	return(out)
+}
+remUNI	=	function(IN)	IN[, -intersect(
+	which(!sapply(IN, is.numeric)),
+	which(lapply(lapply(IN, unique), length) == 1))
+	]
+\end{styleR}
+
+As I mentioned before, \textbf{aggregate} is one of my favorite functions in R, but it has an issue with functions like \textbf{stats} that produce multiple outputs. Rather than create a single data frame to hold all of the results, it creates a matrix for each type of result (mean and median, each have their own matrix, for example) and places these matrices in a data frame, creating a multi-level object. This \textbf{sepCOL} function fixes that by creating separate columns for each result type. It is because \textbf{sepCOL} is meant to be used on the outputs from \textbf{aggregate} that I have named the lone argument \textbf{aggOUT}
+
+The first step to \textbf{sepCOL} is to identify the columns that are matrices, which is accomplished by combining \textbf{sapply} and \textbf{is.matrix}. The \textbf{sapply} function was used before and it simply applies the supplied function across the object it is given, so in this case \textbf{is.matrix} is applied across the columns of \textbf{aggOUT}. There are other functions similar to \textbf{sapply}, such as \textbf{lapply} which is functionally identical, except \textbf{sapply} automatically simplifies the output while \textbf{lapply} must be told to. The result is a list of logical or Boolean outputs, meaning "TRUE" and "FALSE" terms. When selecting columns (or rows) from a data frame, you can do so by their index, by identifying their name, or by providing a list like this, where "TRUE" is included and "FALSE" is excluded.
+
+The next line in the function creates the \textbf{out} object by giving it the non-matrix columns, selected by inverting the Boolean results from the previous test. These columns contain strings labeling the groups \textbf{aggregate} worked on. Next we have a \textbf{for} loop that applies the \textbf{which} function that tells you which elements in a list are "TRUE." The indices of those elements in the list are also the indices of the columns containing matrices in \textbf{aggOUT}.
+
+Within the \textbf{for} loop, the matrix of the current column, selected using the \textbf{FUN} term, is converted into a data frame, \textbf{DATA}. The column names of the new data frame will be the column name that was originally given to the column in \textbf{aggOUT} with the names from the matrix attached and a dash separating them. The way \textbf{aggregate} works is to have the data frame's column name identify the variable, such as the CPU temperature, and then the column names of the matrices be the names of the different functions, which I set in the \textbf{stats} function.
+
+Finishing off the loop is \textbf{cbind} for column bind as it attaches \textbf{DATA} to \textbf{out} as new columns. The end result is a single-level data frame containing all of the information of the input.
+
+The second function here is a new one and actually pretty useful. Its purpose is to remove columns from its input, \textbf{IN}, that contain a single, unique value, hence the name \textbf{remUNI}. The way this function works is to create two lists of indices and then find the intersect using the \textbf{intersect} function. The indices present in both are the columns that should be removed from \textbf{IN}, hence why the negative sign is used.
+
+The first list is created with \textbf{sapply} and \textbf{is.numeric} to find which columns hold numbers, and then invert the results. This is to protect any data that might be constant across its column, which can happen with memory frequencies as those P-states are very strict. The \textbf{which} function converts the logical results from \textbf{is.numeric} into indices.
+
+The second list looks for those columns consisting of a single, unique value, and it does this with \textbf{lapply}, which is very similar to \textbf{sapply}. The difference is \textbf{sapply} is a wrapper for \textbf{lapply} where the \textbf{simplify} argument has been set to "TRUE." For the present use case, it does not matter which is used, but for the other list, it does and \textbf{which} will fail if \textbf{lapply} is used. In any case, starting from the inside \textbf{unique} is applied to the columns of \textbf{IN}, which will build lists of the unique values in each column. Next \textbf{lapply} is called again but is paired with \textbf{length}, to determine how many unique elements there are in each column. The results from this are then compared to 1, so "TRUE" is returned for each column that consists of a single, unique value, and then \textbf{which} returns the indices.
+
+With the two sets of indices, \textbf{intersect} is able to do its thing and the indicated columns are removed from \textbf{IN}.
+
+The usefulness of this function is so the \textbf{aggregate} function later will be able to use unnecessary groups in the data. For example, this data is only for a single CPU, but \textbf{aggregate} can still be set to group by it, adding an unnecessary column to its output. With \textbf{remUNI} that column and others will be removed without needing to specify the columns, which is how I did it before.
+
+\subsection{unitCOL Function}
+\begin{styleR}
+unitCOL	=	function(DATA)	{
+	levs	=	levels(DATA)
+	if	(is.character(DATA))	levs	=	DATA
+	levs[grep("CPU_Temp", levs)]		=	paste0(levs[grep("CPU_Temp", levs)],		" (°C)")
+	levs[grep("Frequency", levs)]	=	paste0(levs[grep("Frequency", levs)],	" (MHz)")
+	levs[grep("Energy", levs)]		=	paste0(levs[grep("Energy", levs)],		" (mJ)")
+	
+	return(rem_(levs))
+}
+\end{styleR}
+
+This \textbf{unitCOL} function looks more complicated than it is because working with factor levels is more complicated than I feel it should be. In any case, the purpose of the function is to change the factor levels we will see later on to add units to them. For example, "CPU\_Temp" has "(°C)" added to it, so it is clear the temperature is being reported in Celsius.
+
+\subsection{dataSUM Creation and Formatting}
+\begin{styleR}
+GROUPS	=	list(
+		CPU				=	dataALL$CPU,
+Cooler			=	dataALL$Cooler,
+		Test			=	dataALL$Test,
+		Period			=	dataALL$Period,
+		Socket			=	dataALL$Socket		)
+DATAS	=	list(
+		CPU_Temp			=	dataALL$CPU_Temp,
+		Frequency		=	dataALL$Frequency,
+		Socket_Energy	=	dataALL$Socket_Energy,
+		Core_Energy		=	dataALL$Core_Energy,
+		Uncore_Energy	=	dataALL$Uncore_Energy
+		)
+
+dataSUM	=	sepCOL(aggregate(DATAS, GROUPS, stats))
+dataSUM	=	remUNI(dataSUM)
+\end{styleR}
+
+At last we come to actually using the \textbf{aggregate} function, and not just another function to manipulate the results, though we are not down with that work yet. First things first, it is necessary to identify how \textbf{aggregate} should group the data, which is what the \textbf{GROUPS} object stores as a list. The similarly constructed \textbf{DATAS} list is what \textbf{aggregate} should apply the provided function to, with that function being \textbf{stats}.
+
+As both \textbf{GROUPS} and \textbf{DATAS} have a similar design to them, I can cover the two key aspects of their design together. First, they are the list class, which is important because the vector class would not be appropriate here. As lists, each of the elements are kept separate from each other, so the CPU data is all in one list element, the Cooler in another, and so on. If we attempted this with a vector, all of the data would be concatenated into a single list, destroying the groups. The second key aspect is setting the different \textbf{dataALL} columns equal to a string. (The quotes are not necessary for identifying them as strings here because there are no spaces within the names.) By doing this \textbf{aggregate} will uses these words as column names for its output, making it much easier to read.
+
+With \textbf{aggregate} run, the \textbf{sepCOL} function is applied on the result, so \textbf{dataSUM} will be a single-level data frame. Following that \textbf{remUNI} is applied to remove those columns with a single unique value in them, which would be all of them except for "Period" and those containing the \textbf{stats} results.
+
+\subsection{longSUM Creation and Formatting}
+\begin{styleR}
+longSUM	=	pivot_longer(dataSUM,
+	cols			=	which(sapply(dataSUM, is.numeric)),
+	names_to		=	c("Measurement", ".value"),
+	names_sep		=	' - ',
+	names_ptypes	=	list(Measurement = factor(ordered = TRUE))
+)
+
+levels(longSUM$Measurement)	=	unitCOL(levels(longSUM$Measurement))
+longSUM	=	round2(longSUM)
+\end{styleR}
+
+Now we have the last of the manipulations for the \textbf{aggregate} output, starting with the \textbf{pivot\_longer} function I used in the two Data scripts. To explain why I am using this, you can look back at what I said concerning the naming of the columns. After \textbf{sepCOL} is run, the column names will include both the variable name and the statistic type, which makes the data frame both wide and messy to look at. The \textbf{pivot\_longer} function is perfect for this then, as it will change some of those columns into rows and appropriately manipulate the column names at the same time.
+
+The first argument is the object the function is to operate on, \textbf{dataSUM} with the second, \textbf{cols}, identifying which columns it will be manipulating. We only want the columns containing data to be pivoted, so we use \textbf{sapply} with \textbf{is.numeric} to find just those containing numbers, and \textbf{which} translates the Boolean or logical outputs into useful indices. Now, it is very important that \textbf{sapply} is used here because it simplifying the output is necessary so what \textbf{which} gets is appropriate. If \textbf{lapply} were used instead, it would through an error because it would see what it is getting as a list while \textbf{which} expects logical, or rather a vector of logical values. (R reports the class of vectors as the class of what they contain, rather than as a vector, but the \textbf{is.vector} function will still work to check them.)
+
+The remaining arguments are all concerned with the naming columns the function will create. Though it is not the next argument, I want to cover the \textbf{names\_sep} argument first, as I think that will help to explain the \textbf{names\_to} argument. With \textbf{names\_sep} you are able to identify a substring to separate the original column names at. If you go back to the \textbf{sepCOL} function you can see it was a dash surrounded by spaces that I used to separate the name of the measurement type and the statistic for that column. Now looking to the \textbf{names\_to} argument, I am passing it a vector with two elements and the one of the left, "Measurement," will be the name of the column the piece of the original column names to the left of the dash will be placed in. The right side of the dash will be used as the new column names, because I am using the ".value" term, which tells \textbf{pivot\_longer} to use the value it gets from the separation.
+
+The last argument is \textbf{names\_ptypes} and is to make sure the "Measurement" column is an ordered factor. If you have looked at the sections for the Data scripts, then you know that this argument might no longer work as it had when I wrote this script, as the documentation describes its purpose as confirming the data type for the column. To change the data type would take the \textbf{names\_transform} argument, which was not present at the time I worked on this.
+
+The last few lines of this block of code apply some additional formatting, with the first being the application of the \textbf{unitCOL} function to the levels of the "Measurement" column. This will add the appropriate units to the contents of these columns, as I described earlier. The second line applies \textbf{round2} to the \textbf{longSUM} object, so none of the numbers will have more than two digits after the decimal point.
+
+Originally the next functions I covered were from my attempts to have R find the point temperatures stabilized. I was never satisfied with the results though, and moved on to using quartiles instead, which are actually quite appropriate and the information they provide is pretty close to what I was originally looking for. Because of this, I have removed the steady functions I wrote from the current version of the scripts, though they will remain in archived versions. Perhaps at some point I will return and attempt some improvements, but for now we can move on to my function for working with the quartiles.
+
+\subsection{tempCROSS Function}
+\begin{styleR}
+tempCROSS	=	function(DATA, PERIOD, QUAN, OP = NULL, LIST = 10)	{
+	COLS	=	c("Time", "CPU_Temp", "CPU_Temp_Diff")
+	out		=	DATA[DATA$Thread == 0 & DATA$Period == PERIOD, COLS]
+	if (PERIOD == "Cooldown")	out$dTime	=	out$Time - duration
+	
+	if (QUAN < 1)	LIM	=	quantile(out$CPU_Temp, QUAN)
+	if (QUAN > 1)	LIM	=	QUAN
+	
+	if (is.null(OP))	{
+		if (PERIOD == TESTname)		OP	=	">="
+		if (PERIOD == "Cooldown")	OP	=	"<="
+	}
+	
+	if (OP == "<=")		return(out[out$CPU_Temp <= LIM, ][1:LIST, ])
+	if (OP == ">=")		return(out[out$CPU_Temp >= LIM, ][1:LIST, ])
+}
+\end{styleR}
+
+You might think a function for reporting the values that cross quartiles would be simple, and technically this is still simple; it just has a lot of steps to it. The purpose of \textbf{tempCROSS} is to provide a subsection \textbf{dataALL} to show just the data that crosses a quartile for a specified period. To achieve that then we need to know what columns to show, what period we are looking at, the limit we are interested in, and the direction that limit is crossed. I am very intentionally saying limit here instead of quartile because this function can also look for when a specific temperature is crossed, which is handy if there is a zero RPM feature for the cooler.
+
+Starting things off we can see there are five arguments for \textbf{tempCROSS} with the last two having default values. First is \textbf{DATA}, which should always be \textbf{dataALL}, and second is \textbf{PERIOD}, which will be either \textbf{TESTname} or "Cooldown," depending on which period we are looking at. The third argument is \textbf{QUAN} which originally stood for quantile but is more generically the limit we are looking for. It can be either a quantile, so a value between 0 and 1 with the quartiles at 0.25, 0.5 (the median), and 0.75, or a value greater than 1. If \textbf{QUAN} is greater than 1, then it will be taken to be the limit itself, as we will see shortly. The fourth argument is \textbf{OP} and by default it is "NULL" but originally is how I told the function which operation to use; greater than or less than. I have since built this into the function by looking at the \textbf{PERIOD} argument because typically when in the test period we want to know when we go above a temperature, and for the Cooldown period we want to know when we fall under a temperature. The final argument, \textbf{LIST}, is for how many rows the output should have and by default I have it return ten.
+
+The first three lines of the function are all for formatting purposes, though the third is a little special. The first is the list of columns I am interested in; "Time," "CPU\_Temp," and "CPU\_Temp\_Diff." The first two are necessary for the function to even work while the third is helpful when reading the results.
+
+With the second line I create the \textbf{out} variable as a subset of \textbf{DATA}, removing all unnecessary rows and selecting just the columns from the \textbf{COLS} list. Only the rows for Thread 0 are used because that will be present for all CPUs and the temperature values are repeated across threads at the same time value, and cutting out all but the specified period helps simplify some of what the function will be doing later on.
+
+The third line checks if we are looking at the Cooldown period, and if we \textbf{out} gets a new "dTime" column. The time values in \textbf{dataALL} have the test period start at 0, so to know how long since the Cooldown period began one would need to subtract \textbf{duration} (3600 by default) from "Time." Rather than making that something the user needs to do, I decided to just have R do it by creating this delta-time column that subtracts \textbf{duration} for me.
+
+The next part to \textbf{tempCROSS} checks the value of \textbf{QUAN} and determines if the argument is a quantile or the specific limit. If the argument is less than one, it will be a quantile so the \textbf{quantile} function is used to get the corresponding value from the data, and that is assigned to \textbf{LIM}. If \textbf{QUAN} is greater than one, then \textbf{LIM} will be assigned that value and we move on. Technically there is a problem if \textbf{QUAN} is ever 1, but there is no reasonable situation that will occur, so we need not be concerned about that.
+
+Once again we have some \textbf{if} statements, with the first checking the value of \textbf{OP}. If it is "NULL" then the value of \textbf{PERIOD} will be checked as well. If it is \textbf{TESTname} then \textbf{OP} will be "\>=" and if it is Cooldown then \textbf{OP} will be "\<=," corresponding to the directions we are interested in.
+
+Lastly we have a couple more \textbf{if} statements checking the values of \textbf{OP} to determine which subset of \textbf{out} will be returned by the function. Either way though, \textbf{LIST} will determine the number of rows returned by the function, and by default it will be just ten.
+
+\subsection{CPUslopes}
+\begin{styleR}
+CPUslopes	=	function(DATA = dataALL, PERIOD = TESTname,	WID = 0.1, OFF = 0.01)	{
+	dataTEST	=	dataALL[dataALL$Period == PERIOD, ]
+	PERCS	=	c(OFF,	WID + OFF,	1 - WID - OFF,	1 - OFF)
+	SECTS	=	quantile(dataTEST$Time, PERCS)
+	
+	slope	=	function(DATA = dataTEST)	{
+		c(
+		coef(lm(CPU_Temp			~	Time,	data = DATA))[2],
+		coef(lm(Frequency			~	Time,	data = DATA))[2],
+		coef(lm(Socket_Energy/1000	~	Time,	data = DATA))[2],
+		coef(lm(Core_Energy/1000	~	Time,	data = DATA))[2]
+		)
+	}
+	
+	out	=	rbind(
+		slope(),
+		slope(dataTEST[SECTS[1] <= dataTEST$Time & dataTEST$Time < SECTS[2], ]),
+		slope(dataTEST[SECTS[3] <= dataTEST$Time & dataTEST$Time < SECTS[4], ])
+		)
+	colnames(out)	=	c("CPU_Temp",	"Frequency",	"Socket_Power",	"Core_Power")
+	rownames(out)	=	c("Test Period",	paste0(PERCS[1]*100, "% to ", PERCS[2]*100, "%"),	paste0(PERCS[3] * 100, "% to ", PERCS[4]*100, "%"))
+	return(out)
+}
+\end{styleR}
+
+To be honest, I am not sure how useful the results of this function will be for this data, but having developed it for the GPU scripts, I decided to give it a try, copying it over here. What this function will do is find the slopes of linear models for the data across different sections. The data itself does not have a linear pattern to it, but it can still be interesting to see what the slope was and how positive or negative it might be.
+
+The arguments for the \textbf{CPUslopes} function are \textbf{DATA}, \textbf{PERIOD}, \textbf{WID}, and \textbf{OFF}, with each having a default value. It is obvious \textbf{dataALL} will be \textbf{DATA} by default as there is no other data for these scripts. The \textbf{PERIOD} is \textbf{TESTname} because I do not believe the slopes for the other periods would be as interesting. For the Cooldown period it is only the temperature that really changes much over time, as the frequency and power consumption can instantly fall to their idle levels, and the Warm-up period is too short to be interesting for this.
+
+The last two arguments are less obvious but very important. The purpose for \textbf{WID} is to set a width for sections at the beginning and end of the test period that the linear models should be found for. A modern CPU's boost methods tend to exhaust after a time, so I thought it would be interesting to look at the slope for a section at the beginning, and to compare it to a section at the end. There is a catch though, and that is where \textbf{OFF} comes into play, as it is an offset. Something I noticed in the GPU data that will be present here as well, at least partially, is the benchmark takes some time to load at the beginning, and sometimes it seems to end early. I doubt it is actually ending early but instead I have not fully corrected for the GPU-z timing error. In any case, I want an offset at the beginning and the end to avoid these potential issues with the data. The defaults are for the section width, \textbf{WID} to be 0.1 or 10\% while the offset is 0.01 or 1\%, with it being percentage of the time.
+
+Entering into the function the first thing that happens is the creation of \textbf{dataTEST} that will hold just the data from the selected period. This simplifies some things later but also helps with something coming up shortly. The next thing that happens is the creation of the \textbf{PERCS} vector that holds the percentage values, with elements one and two being the range for the early section, and elements three and four being the range for the late section.
+
+Next the specific values marking the beginning and end of the sections are created and stored in \textbf{SECTS}. Technically one could simply multiply \textbf{duration} by the values in \textbf{PERC}, but because I originally developed this code for working with frame time data, I needed to do things a little differently. Frame time data does not have a regular sampling frequency to it, which just because a tenth of the time period has passed you might not have a tenth of the final data collected. The solution to this is the \textbf{quantile} function as it will find the position of the decided portion in the data. For this CPU data though, as it is all recorded on a regular 1 Hz frequency, this is overkill but should produce the same result in the end.
+
+The next part of the function is the creation of the \textbf{slope} function that will return the slopes for the data it is provided. Importantly, it is set to provide the slopes for specific columns: "CPU\_Temp;" "Frequency;" "Socket\_Energy;" and "Core\_Energy," with both energy measurements being converted to W from milliwatts. It will be necessary to edit the function to add or remove from these columns.
+
+Within this \textbf{slope} function we see the \textbf{coef} and \textbf{lm} functions with the former returning the coefficients of the latter. These coefficients would be first the intercept and second the slope, which is why there is bracket notation at the end of selecting the second value. The way \textbf{lm} works is to be given a relation between variables and the data the variables are from. This relationship is written in formula notation, something I do not much enjoy working with in R, but in any case, the way it works is for the Y value, the dependent variable, to be on the left and the X value, the independent variable, to be on the right of the tilde. As you can see, you are able to do some arithmetic at this time and you can even add other variables if you wish, though that level of complexity is inappropriate here. All we want \textbf{lm} to do is figure out the linear model between a measurement like "CPU\_Temp" and the recorded "Time" values, and to then get just the slope of that model.
+
+With \textbf{slope} created we can move on to creating \textbf{out} which I do with the \textbf{rbind} function for row bind. This way the separate outputs of \textbf{slope} will be combined as rows for a matrix rather than a data frame in this case, but neither is superior to the other in this situation. With \textbf{out} created and holding the slopes, the column and row names are set, so the results can be easily read and understood in the TXT output. By using the \textbf{paste0} function the beginning and end of each section can be identified, regardless of the values given for \textbf{WID} and \textbf{OFF}.	
+
+That finishes off this first section of the Output.r script, with the next looking at the text output portion of the file. It will prove quite short, but I still feel it is appropriate to separate the script at this point, and again when the graph output code comes up.

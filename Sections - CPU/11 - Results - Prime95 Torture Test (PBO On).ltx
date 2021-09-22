@@ -1,0 +1,69 @@
+\section{Results - Prime95 Torture Test (PBO On):}
+\graphicspath{{Media - CPU/Prime95 (PBO On)/}}
+
+As we saw previously, there is certainly some variability occurring with the Prime95 Torture Test. This is why I collected the PBO On data twice, in case the variability I found in the first run was an error. It was not but I am still using the second data set I recorded, as it was after this run I collected the PBO Off data covered already.
+
+\vspace{1.0ex}	\noindent	\resizebox{\columnwidth}{!}{
+\begin{tabular}{| l | l | l | l | l | l | }
+	Period	&	Measurement	&	Min	&	Median	&	Mean	&	Max	\\	\hline\hline
+	Warm-up	&	CPU Temp (°C)	&	31.9	&	32.4	&	33.6	&	71.3	\\	\hline
+	Warm-up	&	Frequency (MHz)	&	2401.99	&	2577.95	&	2758.72	&	4196.73	\\	\hline
+	Warm-up	&	Socket Energy (mJ)	&	11926.74	&	13269.7	&	14055.33	&	96469.8	\\	\hline
+	Warm-up	&	Core Energy (mJ)	&	22.6	&	48.27	&	132.12	&	9015.63	\\	\hline
+	Warm-up	&	Uncore Energy (mJ)	&	11347.85	&	12603.34	&	12998.38	&	35466.86	\\	\hline
+	Prime95 Torture Test	&	CPU Temp (°C)	&	70.6	&	84.8	&	84.61	&	84.8	\\	\hline
+	Prime95 Torture Test	&	Frequency (MHz)	&	2417.43	&	3777.07	&	3793.5	&	4058.97	\\	\hline
+	Prime95 Torture Test	&	Socket Energy (mJ)	&	42755.57	&	120385.04	&	122032.96	&	152277.09	\\	\hline
+	Prime95 Torture Test	&	Core Energy (mJ)	&	26.75	&	9816.97	&	9895.62	&	12838.09	\\	\hline
+	Prime95 Torture Test	&	Uncore Energy (mJ)	&	-2961.37	&	44975.8	&	42868.02	&	63612.23	\\	\hline
+	Cooldown	&	CPU Temp (°C)	&	32.9	&	33.9	&	35.4	&	80.4	\\	\hline
+	Cooldown	&	Frequency (MHz)	&	2401.35	&	2590	&	2750.86	&	4302.5	\\	\hline
+	Cooldown	&	Socket Energy (mJ)	&	11515.12	&	13672	&	13929.87	&	40777.24	\\	\hline
+	Cooldown	&	Core Energy (mJ)	&	21.41	&	52.63	&	101.58	&	8440.95	\\	\hline
+	Cooldown	&	Uncore Energy (mJ)	&	11049.48	&	12969.84	&	13117.26	&	21460.1	\\	\hline
+\end{tabular}
+}	\vspace{1.0ex}
+
+As we can see both idle periods are similar to each other, and pretty close to what we had with PBO disabled, which makes sense as that technology should only be affecting things when there is a load.
+
+Looking at the test period statistics now, these data are more interesting, in part because of what they suggest we will see in the graphs, based on the variability we observed earlier. First the temperature was in fact pegged at 85 °C as both the median and mean values are at that point, whereas before both were a couple degrees lower. The Frequency stats are similar to what we had before, with the averages a little below 3.8 GHz and the maximum only a bit above 4.0 GHz, so it would seem PBO was not able to find more performance for Prime95, or at least not through frequency. The Socket Power averages are a bit above what we had before, but on the order of 0.1 W, so there is nothing too interesting there. However the maximum value was definitely higher, reaching 152 W, compared to 125 W. Arriving at the Core Power stats we do see something more interesting here as the cores were, on average, drawing 0.2 W to 0.3 W more than before, which is significant as the cores were typically pulling around 9 W to 10 W. We can also see the maximum for Core Power was 12.8 W, which is more than one Watt greater than it was with the PBO Off data.
+
+\image{Frequency - Mean}
+
+The differences PBO has made are very clear here. First we can see the boost in Socket Power at the start of Prime95, which also caused the temperature to increase much more quickly. There is a slight complication with the quartile statistics, but I will get to that at the proper time. Second, we can see the temperature was stable for the length of the test, producing a nearly flat line here. Third, in approximately the same location as we looked at in the PBO Off graph, the Socket Power here increased and remained elevated. Before looking at the other graphs, my guess is the cores did not see their power reduce like happened before, so it is simply the Uncore Power increased during that time, before it fell later.
+
+Coming to the quartile data now, the lower quartile for the test period was 84.6 °C and the temperature crossed that point at second 881, or after 14 minutes and 40 seconds. That is longer than it took the PBO On run to cross its lower quartile, but if I instead check for when the temperature crossed 84.5 °C, I get just 73 seconds. That last tenth of a degree took some 13 minutes to reach, which goes to show the importance of looking at the graph. I decided to pull out the ECDF function of R and found 84.5 °C corresponds to the 24.76 percentile, so just under the lower quartile, while 84.6 °C is at the 29.17 percentile, which is markedly above that quartile. Obviously, and appropriately, R returns what crosses the quartile value, rather than what is nearest.
+
+For the Cooldown period, the upper quartile was 35.6 °C and it was at second 4250 the CPU first crossed that line. There was some variability there, with the tenth measurement being at second 4306, but looking at the graph I am not very concerned. It does appear the cooling has slowed down at this time, and even flattened a little, but nothing unusual is occurring.
+
+\image{Frequency}
+
+Look at the thread's separately we can see their frequencies shifted around a little, like what we saw in the PBO Off data, but it does seem fewer shifted lower. There are spots where the frequency fluctuates, but if it does not increase slightly, it seems to go back to where it was before. It does not appear any of these shifts, for PBO Off or On, were very significant, but this still looks like PBO was able to keep the frequency a bit more consistent. Of course, we already know the Core Power did not decrease as much as it did before, at least based on the statistics shared above.
+
+\image{Core Power}
+
+Exactly like before we see the Uncore Power increase during certain sections. Looking at the Core Power data over the same time periods, we can see some change, but it is minor. Of course the cores each take so little power, even a small change can be significant, but compared to the PBO Off version of this graph, the changes here are smaller. To see what the specific changes are, we want to look at the histogram for this data.
+
+\image{Hist - Core}
+
+Well, that is different. If you go back to the PBO Off version you can see the measurements formed two clear peaks for the test period, but here there are four peaks. The two outer peaks, which are also the two shorter peaks, approximately align with the two original peaks, while the two taller peaks seem to be new. Exactly what is happening here, I am a little unsure of, but here is a guess.
+
+If we look more closely at the PBO Off version of the graph, we can see a third peak near the last one, approximately where the third peak in this PBO On graph is, though markedly shorter. There is also a bulge on the side of the first peak in the PBO Off graph that again roughly aligns with the second peak of this PBO On graph. These peaks make me think there might be power states there that at least some of the cores can occupy. Without PBO the budgeting or tolerances might not allow the cores to be at those states, but with it enabled they can be. This then shifted the overall core power usage statistics to be a little greater, though it appears the range of the distribution is fairly similar.
+
+Another feature to notice here is the tail on the right side, indicating PBO allowed at least someof the cores to pull more power than they normally do, however briefly.
+
+\image{Hist - Uncore}
+
+Looking at this graph, there is only one feature that is very interesting, and that is the X scale is going to about 65 W. Though we cannot see it, this suggests there are some data at that high a level. However, if you compare the peaks here with the PBO Off graph, you will see they are in the same place. It appears Uncore Power has not changed much between PBO Off and PBO On. That probably makes sense though, as Precision Boost Overdrive likely targets the compute portions of the processor more than the non-compute parts. I do feel it worth pointing out that the changes to Core Power must have been repeated in the Socket Power measurements for these peaks to be where they are.
+
+\image{Hist - Temperature}
+
+The only thing of much note in this graph, I feel, is that the temperature data is now in a single peak, unlike before. This is exactly what we should expect from what we saw in the other graphs showing the temperature, as it was so very consistent. This is also inline with the idea of an opportunistic boosting method, as it would push to its limits and stay there, such as the thermal 85 °C thermal limit.
+
+\image{Hist - Socket}
+
+This graph is mildly interesting, as we can see two clear peaks to the amount of power the socket pulled, with another, smaller peak also present. Before we had a single peak but with PBO having a greater power budget, we can see the CPU was able to receive a bit more power than before. We can also see the small tail at much higher power levels from the start of the workload, when PBO was hoping to complete the task quickly with a large but short boost.
+
+\image{Hist - Frequency}
+
+This graph too is mildly interesting, but really only in comparison to the PBO Off version. In that version it appeared we had a single peak, but here, though it is hard to see behind the box plot, there are a few very close together there. Additionally, we can see the shorter peaks on either side of the tall one. There were shorter peaks with PBO Off as well, but they appear to be shorter than here. My interpretation of this is PBO's opportunistic boosting is resulting in the threads going to certain speeds that are just separate enough to show up here, but are not all that different. Based on the averages we saw earlier though, there is not much difference from what we saw with Precision Boost Overdrive disabled. A better cooler may produce more interesting results, but as the AMD Wraith Prism is all I have presently, these are the best data I can produce. And in case it needs to be stated, according to the statistics, effectively no time was spent below the 3.7 GHz base clock for the test period (0.07\%) and as we can see in this image, all of the data was below the 4.3 GHz boost clock.

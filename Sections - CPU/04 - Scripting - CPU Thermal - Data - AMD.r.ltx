@@ -1,0 +1,252 @@
+\section{Scripting: CPU Thermal - Data - AMD.r}
+
+There are multiple reasons I am covering the "Data – AMD.r" script first, with possibly the most important being I developed it first. That means there are certain conventions I established in it that I then needed to recreate with the "Data – Intel.r" script, to ensure compatibility with the Output script later. This is also the more complicated script because it needs to work with two different input files and to intelligently recognize a variable within one of these files, and that is actually what the script starts with.
+
+\subsection{AMD μProf Cleaning}
+\begin{styleR}
+TEXT	=	readLines("AMD-CPU Profile.csv",	warn = FALSE,	n = 100)
+for (LINE in 1:length(TEXT))	{	if (TEXT[LINE] == "PROFILE RECORDS")	break	}
+\end{styleR}
+
+The AMD μProf utility is quite powerful with its ability to provide information from many sensors and for many purposes. For that reason it is important for the user to know what they are looking at, so the CSV output contains descriptions for each measurement. Depending on your experience with importing tables you, might already see a problem here, but there is another as well. That first problem is recognizing the data type for columns, because if you have a column holding all numbers, but then a string somewhere providing a description, not just a column name, most software will then interpret the entire column as strings. The description then must be removed and the data type changed to address this issue.
+
+The other problem, which did take a little bit to develop a solution to, is μProf places these descriptions at the top of the top of the file. I was not clear about it above, but the number of descriptions, each having their own row, varies based on things like the thread count for the CPU and if there is an AMD GPU or GPUs installed, because data from those can be recorded as well. Skipping the first so many lines of a CSV is quite simple, as the \textbf{read\_csv} function even has an argument for exactly that purpose, but when the number to skip changes, you have two options. One is to manually find how many lines to skip and provide the value, and the other is to invest the time to teach R to do the work for you, and that is what these two lines above do.
+
+The first line reads in the first one hundred lines of "AMD-CPU Profile.csv" into R as the object \textbf{TEXT}. Potentially for very high core-count CPUs and systems with multiple AMD GPUs the \textbf{n} argument should be increased from 100, but that is a simple fix. The \textbf{warn} argument is set to "FALSE" so R does not throw up any warnings about the file lacking certain formatting it is looking for, but it all works fine regardless.
+
+After the first hundred lines are read into \textbf{TEXT}, I use a \textbf{for} loop I decided to compact to a single line. What it does is fairly simple so I do not want it taking multiple lines. The loop itself goes through each line of \textbf{TEXT}, specifically by the line index. The \textbf{LINE} iterator is given values between 1 and the length of \textbf{TEXT} (which should be 100) using the short hand for creating a sequence with the ":" symbol. Within the loop then, the index is used to select a specific line from \textbf{TEXT}, using square bracket notation and an index value, and this is compared against the string "PROFILE RECORDS." The data I am interested in from μProf starts after a line that is only "PROFILE RECORDS," and so the index for that line is also the number of lines to skip. Once that line is found, \textbf{break} is used to escape the loop, with \textbf{LINE} keeping that value. The \textbf{LINE} variable is accessible outside of the loop and to the global R environment. This is not generally the case for variables created inside functions, as those are treated as their own environments.
+
+\subsection{AMD μProf Importing}
+\begin{styleR}
+uProf	=	read_csv("AMD-CPU Profile.csv", skip = LINE)
+\end{styleR}
+
+Nothing too complicated here as the \textbf{read\_csv} function imports the data, but skips the beginning based on \textbf{LINE} making this script better able to handle arbitrary AMD CPUs.
+
+\subsection{Thread Columns to Rows}
+\begin{styleR}
+threadFREQ	=	pivot_longer(uProf[, c(1, 2, grep("thread.*-core-effective-frequency", colnames(uProf)))],
+			cols			=	-c(1, 2),
+			names_to		=	"Thread",
+			names_pattern	=	"thread([:digit:]+)-core-effective-frequency",
+			# names_ptypes	=	list(Thread = numeric()),
+			values_to		=	"Frequency"
+)
+\end{styleR}
+
+It has taken a while but at last I am using a function from the \textit{tidyr} package. It is a somewhat tricky function to completely grasp the arguments of though. The \textbf{pivot\_longer} function is able to take columns and convert them into rows, making the output longer than the input. It also adds the appropriate number of columns to identify the new rows. This block of code will take the multiple columns reporting individual thread frequency down to a single column with the data and a second that labels them with the appropriate thread number.
+
+The first argument I have given it is the data frame it is going to work on, which is a subset of the \textbf{uProf} object. This subset is identified with square bracket notation that goes row then column, with a comma separating them. As I want every row included, there is nothing to the left of the comma. For columns I want the first two columns which are "RecordId" and "Timestamp." The other columns I want are all of those with "thread" and "-core-effective-frequency" in the title, with anything separating those two terms. The \textbf{grep} function I am using here searches strings, the second argument, for patterns, the first argument, and the pattern can use regular expressions. I am taking advantage of the Regex support to be very specific in searching the column names of \textbf{uProf}, which will protect against mistakenly selected columns. By the way, there are multiple functions related to \textbf{grep}, but as this one returns the indices of where the pattern is found, it is the most appropriate for this situation.
+
+While I do want the "RecordId" and "Timestamp" columns included in the output, I do not want it involved in the pivoting, so the \textbf{cols} argument is a vector of 1 and 2 with a negative in front, which is interpreted to mean those columns should be ignored. You can use the negative sign with indices to remove rows or columns from a data frame or other multi-element object types.
+
+The next argument is \textbf{names\_to} and sets the name for the column that will label each row added through pivoting. It is the next argument, \textbf{names\_pattern}, that is more complicated. What this argument does is allow you to identify the pattern to the column names of the original object to pull out sometimes multiple variables. Here I am using it to only identify one variable, the thread number, but in the Intel script it will actually identify two variables. It supports Regex like \textbf{grep} for the user to identify the pattern, and in this case I have the pattern being "thread" ahead of the variable with "-core-effective-frequency" behind it. Originally I used the catch all ".*" which will catch any number of any character, but because I have the strings before and after the desired number, it knew what specifically to grab. Now I have changed it to the more specific "[:digit:]+" that tells the function and R to look for a substring of digits only, and there must be one or more digits.
+
+Commented out is the \textbf{names\_ptypes} argument that I believe had been more important previously, but an update to R made it less so. What it would do is allow one to ensure the data type of the column being produced is correct, in this case that the "Thread" column is of type "numeric," which is to say a real number. Prior to the update I mentioned, it would not always be a "numeric" and cause a problem with a command immediately after this block. It is also now the case that a different argument exists to transform the data type to be something else, but I do not feel the need to apply it here. That argument is \textbf{names\_transform} or \textbf{values\_transform}, depending on which it is you wish to manipulate.
+
+The final argument I use here is \textbf{values\_to} and it is just to set the name of the column the recorded values should be. The function's purpose is to collapse down a bunch of columns, so the new columns need names and in this case I want the name to be "Frequency."
+
+\subsection{Core Column Creation}
+\begin{styleR}
+threadFREQ$Core	=	floor(as.numeric(threadFREQ$Thread)/2)
+\end{styleR}
+
+With this code a new column is made for \textbf{threadFREQ} named "Core" and it is assigned the floor of the "Thread" value divided by two. In other words, each core has two threads running on it and the core and thread numbering is sequential, so if we round down half the thread ID number, we get the core. Taking threads 0 and 1, dividing those numbers by two gives us 0 and 0.5, which return 0 when rounded down to the nearest integer (the floor function). This is important to do here as later the per-core measurements will be merged with these results and this "Core" column is what will match the cores to the threads.
+
+It is also quite important to use \textbf{as.numeric} here because \textbf{pivot\_longer} actually has the "Thread" column as strings (technically the character class). The \textbf{as.numeric} function will convert the data type for use here, but is not changing the class of the column. There are similar functions for the other data types.
+
+\subsection{Core and Socket Energy Columns to Rows}
+\begin{styleR}
+coreENG		=	pivot_longer(uProf[, c(1, 2, which(startsWith(colnames(uProf), "core")))],
+			cols			=	-c(1, 2),
+			names_to		=	"Core",
+			names_pattern	=	"core([:digit:]+)-",
+			# names_ptypes	=	list(Core = factor(ordered = TRUE)),
+			values_to		=	"Core_Energy"
+)
+
+sockENG		=	pivot_longer(uProf[, c(1, 2, grep("socket.*-package", colnames(uProf)))],
+			cols			=	-c(1, 2),
+			names_to		=	"Socket",
+			names_pattern	=	"socket([:digit:]+)-package",
+			names_ptypes	=	list(Socket = factor(ordered = TRUE)),
+			values_to		=	"Socket_Energy"
+)
+\end{styleR}
+
+Twice more I use the \textbf{pivot\_longer} function, these times to produce data frames containing the reported energy use of the individual cores and the whole CPU socket, hence the names \textbf{coreENG} and \textbf{sockENG}. There are a few important differences between these two and the previous example of the function. The more significant difference is with \textbf{names\_ptypes} but the first is the use of \textbf{which} and \textbf{startsWith} for \textbf{coreENG}. Basically, the best way I have found to ensure the correct columns are selected is to exploit the fact these columns all start with "core," making the \textbf{startsWith} function ideal to use. It is a little odd compared to the other string searching functions however, as you give the object to be searched first and then the pattern to find. The function also returns "TRUE" and "FALSE" which is not what I want, so I use \textbf{which} to get the indices of the "TRUE" values.
+
+Coming to the \textbf{names\_ptypes}, what this argument does is confirm these columns are in fact the type specified, in this case ordered factors, or at least that is what the documentation states currently. If it is necessary to use the \textbf{names\_transform} or \textbf{values\_transform} arguments, the value given them will be quite similar except for the function set equal to the column name. You will want it to be just the name of the function, such as "ordered" in this case and without parentheses after it for holding arguments. It does not appear this other argument is necessary, but it is important to be aware of.
+
+\subsection{AMD μProf Temperature Data}
+\begin{styleR}
+if (any(grepl("socket.*-temperature", colnames(uProf))))	{
+	sockTEMP	=	pivot_longer(uProf[, c(1, 2, grep("socket.*-temperature", colnames(uProf)))],
+				cols			=	-c(1, 2),
+				names_to		=	"Socket",
+				names_pattern	=	"socket([:digit:]+)-temperature",
+				names_ptypes	=	list(Socket = factor(ordered = TRUE)),
+				values_to		=	"Socket_Temp"
+	)
+	sockENG	=	merge(sockENG,	sockTEMP,	by = c("RecordId", "Timestamp", "Socket"),	sort = FALSE)
+}
+\end{styleR}
+
+Ignoring the first two lines of code for the moment, this code looks complicated but is not as tricky as it may seem. Its purpose is to find the difference between the socket energy and the sum of the core energy measurements, which, in theory, will provide the uncore energy. This would be the energy spent on the non-computational parts of a CPU, such as the memory controller but also Infinity Fabric, in the case of AMD Zen family processors. Unfortunately I am unsure just how useful this calculation is because the results are sometimes negative, indicating the cores used more energy than the socket pulled. My best guess for how that happens, assuming the measurements are accurate, is there is a lag between the socket getting the energy and the cores getting it. Perhaps the socket energy is stored in capacitors prior to being distributed to the different components, so the cores could drain these capacitors while the socket does not as quickly refill them, potentially because it predicts it will not need to. It is hard to say, but I have observed patterns in data from Cinebench R20 recordings that shows sudden spikes in uncore energy, indicating more socket energy pulled than core energy, as threads finished their workloads. This itself suggests the socket can pull more energy than the cores need, either feeding it into uncore parts or dumping it, as the spikes seemed too high to me to actually be going to some other part of the processor.
+
+Coming to how this code works, the \textbf{rowSums} function does exactly what its name suggests; it finds the sum of values across a row in some object. This makes it necessary to select the correct columns from \textbf{uProf} then, so only the desired values are added up. Notice it is not \textbf{coreENG} I am using here, but \textbf{uProf} as it has the core energy values for each sample across separate rows. To that end I am using \textbf{grep} much as I did in the \textbf{pivot\_longer} functions above. Though likely unnecessary for any consumer machine, this code will sum the measurements of multiple sockets, rather than rely on a single column. The difference is then assigned to the "Uncore\_Energy" column created in \textbf{sockENG} at the same time.
+
+Coming back to the two \textbf{if} statements I ignored briefly, these are to address a subtle but significant difference between the old and new versions of AMD μProf I have to work with. The old version recorded energy in millijoules, which is equivalent to milliwatts because Watts are Joules per second and the sampling frequency is once a second. The new version, however, records directly in Watts and so to keep everything working as it originally did, it is necessary to check and possibly convert from Watts to milliwatts. Sometimes it is really not worth updating software.
+
+\subsection{Energy Conversion and Uncore Energy Column Creation}
+\begin{styleR}
+if (max(coreENG$Core_Energy < 1000))	coreENG$Core_Energy		=	coreENG$Core_Energy * 1000
+if (max(sockENG$Socket_Energy < 1000))	sockENG$Socket_Energy	=	sockENG$Socket_Energy * 1000
+#	newer versions of uProf use Watts instead of mJ, so for consistency the measurements are multiplied when necessary
+
+sockENG$Uncore_Energy	=	rowSums(uProf[, grep("socket(.*)-package-energy", colnames(uProf))]) - rowSums(uProf[, grep("core(.*)-energy", colnames(uProf))])
+\end{styleR}
+
+This line of code looks complicated but is not as tricky as it may seem. Its purpose is to find the difference between the socket energy and the sum of the core energy measurements, which, in theory, will provide the uncore energy. This would be the energy spent on the non-computational parts of a CPU, such as the memory controller but also Infinity Fabric, in the case of AMD Zen family processors. Unfortunately I am unsure just how useful this calculation is because the results are sometimes negative, indicating the cores used more energy than the socket pulled. My best guess for how that happens, assuming the measurements are accurate, is there is a lag between the socket getting the energy and the cores getting it. Perhaps the socket energy is stored in capacitors prior to being distributed to the different components, so the cores could drain these capacitors while the socket does not as quickly refill them, potentially because it predicts it will not need to. It is hard to say, but I have observed patterns in data from Cinebench R20 recordings that shows sudden spikes in uncore energy, indicating more socket energy pulled than core energy, as threads finished their workloads. This itself suggests the socket can pull more energy than the cores need, either feeding it into uncore parts or dumping it, as the spikes seemed too high to me to actually be going to some other part of the processor.
+
+Coming to how this code works, the \textbf{rowSums} function does exactly what its name suggests; it finds the sum of values across a row in some object. This makes it necessary to select the correct columns from \textbf{uProf} then, so only the desired values are added up. Notice it is not \textbf{coreENG} I am using here, but \textbf{uProf} as it has the core energy values for each sample across separate rows. To that end I am using \textbf{grep} much as I did in the \textbf{pivot\_longer} functions above. Though likely unnecessary for any consumer machine, this code will sum the measurements of multiple sockets, rather than rely on a single column. The difference is then assigned to the "Uncore\_Energy" column created in \textbf{sockENG} at the same time.
+
+\subsection{Merging threadFREQ, coreENG, and sockENG, and Creating Time}
+\begin{styleR}
+uProfTALL	=	merge(threadFREQ,	coreENG,	by = c("RecordId", "Timestamp", "Core"),	sort = FALSE)
+uProfTALL	=	merge(uProfTALL,	sockENG,	by = c("RecordId", "Timestamp"),			sort = FALSE)
+
+uProfTALL$Time	=	strptime(uProfTALL$Timestamp, "%H:%M:%S")
+uProfTALL$Time	=	as.numeric(uProfTALL$Time - min(uProfTALL$Time)) + 1
+\end{styleR}
+
+With the objects for each measurement type created, it is time to combine them all into one, which I have named \textbf{uProfTALL}, as it is a much taller or longer version of \textbf{uProf}. To achieve this goal, I use the \textbf{merge} function much like I did earlier. Unfortunately \textbf{merge} can only combine two objects at a time, making it necessary to use it twice.
+
+After creating \textbf{uProfTALL} I create the "Time" column for it from the original "Timestamp" column using \textbf{strptime}. That function will take a string and convert it to the POSIX class R uses for time. As the specific time is irrelevant, just the passage of time I subtract the minimum value of "Time" from the rest of the column, which will start the recording at 0, and then convert the result to the numeric class. POSIX is a form of Unix time and so stores the data as the number of seconds from a fixed time, so this conversion is more about making sure R can use it mathematical than changing the values. Also I add one to the values because the first measurement is actually an average over the length of the sampling period. That and previously I just used the "RecordId" column because it have nearly the same result (I compared once and the difference was just six seconds over the length of the data) which also starts at one. Whichever reasoning you prefer, the one needs to be added for everything to line up properly.
+
+\subsection{GPU-Z Sensor Log.txt Importing}
+\begin{styleR}
+GPUz	=	read_csv("GPU-Z Sensor Log.txt")
+GPUz	=	GPUz[, pmatch(c("Date", "CPU Temperature"), colnames(GPUz))]
+colnames(GPUz)	=	c("Timestamp", "CPU_Temp")
+\end{styleR}
+
+Now we start to work on the GPU-z data, starting by reading it in with \textbf{read\_csv}, even though the file is technically not a CSV. It works though, except for one thing that does complicate matters some. R does not like column names with spaces, but many of the names from the "GPU-Z Sensor Log.txt" contain them. Fortunately R can still be made to work with these columns, even if it dislikes the labels. The first way I achieve this is to use the \textbf{pmatch} function that searches for matches between two lists. In this case I want the matches to be with the "Date" and "CPU Temperature" columns. As the other columns are not necessary, I remove them by assigning the subset with those two columns to the \textbf{GPUz} object that had held all of the data previously.
+
+The next step is to then change the column names to something R is more comfortable with, "Timestamp" and "CPU\_Temp." Unfortunately GPU-z is not very good at keeping time, with some seconds missed and some doubled, so originally I ignored this and just created a sequence the proper length. That was not ideal as the errors added up and shifted the data quite a bit, but I was able to develop a solution.
+
+\subsection{Correcting GPU-z Time Errors}
+\begin{styleR}
+GPUz$Time	=	as.numeric(GPUz$Timestamp)
+GPUz$Time	=	GPUz$Time - min(GPUz$Time) + 1
+#	converts Timestamp to number of seconds and then removes the minimum to make measurements relative
+
+#	there is an issue with GPU-z not keeping time properly, resulting in two recordings at the same Timestamp, and mis-times where there is a double recording and then a skipped second
+DOUB	=	which(diff(GPUz$Time) == 0)	;	MISS	=	which(diff(GPUz$Time) == 2)
+#	when GPU-z doubles a second				;	#	when GPU-z misses a second
+
+MIUB	=	intersect(MISS + 1, DOUB)				#	when a miss precedes a double
+GPUz[MIUB, "Time"]	=	GPUz[MIUB, "Time"] - 1		#	pulling double to fill miss
+
+DOUB	=	which(diff(GPUz$Time) == 0)	;	MISS	=	which(diff(GPUz$Time) == 2)
+DOSS	=	intersect(MISS, DOUB + 1)				#	when a double precedes a miss
+GPUz[DOSS, "Time"]	=	GPUz[DOSS, "Time"] + 1		#	pushing double to fill miss
+
+#	removes misses that cannot be corrected with doubles
+if (any(diff(GPUz$Time) == 0))	GPUz	=	GPUz[-(which(diff(GPUz$Time) == 0)), ]
+#	it is necessary to check if any doubles exist as trying to remove numeric(0) columns breaks things
+\end{styleR}
+
+The first step for this solution is to change the data class of the "Timestamp" column from POSIX to numeric, making it an easily manipulated number and assigning this to the new column, "Time." As I am not interested in the date or hour of the time, I then have the minimum value subtracted from all values in the column, and add 1. The reason it starts at 1 as opposed to 0 is to match the AMD μProf data as "RecordId" starts at 1 as well.
+
+After some comments I have R find the doubled seconds and missed seconds by using the \textbf{diff} function. It will find the difference between consecutive values, and when the difference is 0 that means there are two measurements at the same "Time" value, a double, and when the difference is 2 a second was missed. Both conditions are easy to check for by using the "==" symbol to compare the values and have either "TRUE" or "FALSE" returned, and then to simplify those results down to just being the doubles and misses, I use the \textbf{which} function. This will return a list of the indices for just the "TRUE" values, giving us \textbf{DOUB} and \textbf{MISS}.
+
+With these two lists created, we now know where these errors occurred, which is half the battle to correcting them. The other half is recognizing that often, though not always, doubles and misses are next to each other, so we can more-or-less correct the data by shifting a doubled second into the missed second. Working from that, we know there are two possibilities; a miss before a double and a double before a miss. Either way, finding them is easy with the \textbf{intersect} function and simple addition. If a miss precedes a double, then adding one to the location of the misses, \textbf{MISS} will get us a value in \textbf{DOUB}, and \textbf{intersect} will find that, creating the \textbf{MIUB} list (from miss-double). Next I use square bracket notation to select just the "Time" values at the \textbf{MIUB} indices, which will be doubles, and subtract one, pulling the first double into the missed second.
+
+With the misses preceding the doubles addressed, we can get to when the misses follow the doubles, but first we want to recreate \textbf{DOUB} and \textbf{MISS}, which should now be smaller. We then repeat the process from before, but adding 1 to \textbf{DOUB} instead for \textbf{intersect} and adding 1 to the values at the \textbf{DOSS} (from double-miss) indices.
+
+Lastly, because this process might not have found and dealt with all of the doubled seconds, we check if any exist and remove them. The check is done by using \textbf{diff} again and pairing it with \textbf{any}, that will return "TRUE" if any value in the list of logicals it is given are "TRUE." After that, \textbf{GPUz} is assigned a subset of itself that removes the rows for which there were doubled seconds.
+
+In case you are wondering, it appears AMD μProf is better at keeping time, making it unnecessary to apply a similar process to that data.
+
+\subsection{Merging uProfTall and GPUz into dataALL}
+\begin{styleR}
+dataALL		=	merge(uProfTALL, GPUz[, -grep("Timestamp", colnames(GPUz))], by = "Time", sort = FALSE)
+\end{styleR}
+
+The \textbf{merge} function is used once more, this time combining the \textbf{uProfTALL} and \textbf{GPUz} objects, though the "Timestamp" column is removed from \textbf{GPUz} as it is not necessary. They are merged by the "Time" columns in both to create \textbf{dataALL}.
+
+\subsection{PERIODS Function}
+\begin{styleR}
+PERIODS	=	function(DATA,	BREAKS = c(warm, duration),	LABELS = levsPER){
+	out	=	ifelse(DATA$Time <= BREAKS[1], LABELS[1],
+			ifelse(BREAKS[1] < DATA$Time & DATA$Time <= BREAKS[2] + BREAKS[1], LABELS[2],
+			ifelse(BREAKS[2] + BREAKS[1] < DATA$Time, LABELS[3], NA
+				)))
+	out	=	ordered(out, levels = LABELS)
+	return(out)
+}
+
+dataALL$Period	=	PERIODS(dataALL)
+\end{styleR}
+
+Technically this \textbf{PERIODS} function I have made does not need to exist, because what it does only happens once, but for two reasons it is its own function. One is it can be a little cleaner to look at as its own function than lines of commands. The other reason is I could, and perhaps should, place it in the Input script instead because this is used in both Data scripts. My preference is to keep data-manipulating functions out of the Input script, but will admit that is an arbitrary desire. One final reason it is its own function is because I have found trying to create a function with a generalized design tends to improve the quality of my code, as it must be able to work with more situations and other functions.
+
+As the name \textbf{PERIODS} is intended to suggest, this function is to identify the separate periods within the data. Its arguments are the \textbf{DATA} it is working on, the \textbf{BREAKS} separating the periods, and then the \textbf{LABELS} for the periods, with the last two having default values. Within the function I am using the \textbf{ifelse} function, which is effectively the \textbf{if...else} statement as a function.
+
+The first argument is the condition to check, the second is what to return if the condition is true, and the third is the return for the condition being false. For the first application of \textbf{ifelse}, the condition is if the "Time" value is less than or equal to the first element in the \textbf{BREAKS} argument, which is \textbf{warm}, the length of the Warm-up period. If this is true then the first element of \textbf{LABELS}, which is the \textbf{levsPER} object set in the Input script, will be provided, and if it is not true, we go to the next call of \textbf{ifelse}. It is important to note these \textbf{ifelse} checks are done on each element of \textbf{DATA}, so the output will be the same length as it is. The second \textbf{ifelse} checks for "Time" values between the length of the Warm-up period and the length of the test period. If that is the case, then it returns the second element from \textbf{LABELS}, which will be the name of the test. Lastly, if the "Time" value exceeds the length of the Warm-up and test period combined, then it is in the Cooldown period, so named by the third element of the \textbf{LABELS} list. The 'else' argument for this last call to the function is "NA" so nothing will be done if the final condition is not met, which will never be the case as all possible conditions are covered, provided "Time" values are all numbers.
+
+In fact, we can take advantage of that to simplify this a little by only checking for if "Time" is less than \textbf{warm} (the Warm-up period) or greater than the sum of \textbf{warm} and \textbf{duration} (the Cooldown period), and then having the final false return being the label for the test period. While this would be more compact, I prefer having the order of Warm-up, test, and Cooldown period, for easier reading.
+
+The results of the nested \textbf{ifelse} functions are stored to the \textbf{out} variable, which will be the output of the \textbf{PERIODS} function after one last step. I want the output to be an ordered factor, with that order being \textbf{levsPER}, which is assigned to the \textbf{LABELS} argument.
+
+With the function returning the list of ordered factors, \textbf{out}, it is assigned to the new column for \textbf{dataALL} named "Period," so now each row in \textbf{dataALL} identifies the period the measurement is from. This information is necessary for some of what is done in the Output script and it is better to simply store the information in the data, then to constantly process it out whenever necessary.
+
+\subsection{Warm-up Offset}
+\begin{styleR}
+dataALL$Time	=	dataALL$Time – warm
+\end{styleR}
+
+This may seem odd, but I believe this is a desirable quality of life change to the data. By subtracting \textbf{warm} from the "Time" values of the data, that means the test period, when the data benchmark is launched, begins at 0. Everything about the results from these scripts centers around when the load starts, and then when it stops, so making the start 0 makes it easier to interpret. Like with the period labels, it is easier to apply this to the data than on an as-needed basis, especially for consistency.
+
+\subsection{Configuration Information}
+\begin{styleR}
+dataALL$CPU		=	ordered(CPUname)
+dataALL$Cooler	=	ordered(COOLERname)
+dataALL$Test	=	ordered(TESTname)
+\end{styleR}
+
+These additional columns are so the configuration is stored within \textbf{dataALL}, making it possible to recover this information from \textbf{dataALL} and the "Combined.csv.bz2" output file that will be created at the end of this script. There is still a little more to do first though.
+
+\subsection{diff.CONS Function}
+\begin{styleR}
+diff.CONS	=	function(DATA, DIR = "Forward", lag = 1)	{
+	if	(DIR == "Forward")	return(c(diff(DATA, lag = lag), rep(0, lag)))
+	if	(DIR == "Backward")	return(c(rep(0, lag), diff(DATA, lag = lag)))
+}
+
+dataALL$CPU_Temp_Diff	=	diff.CONS(dataALL$CPU_Temp, lag = length(unique(dataALL$Thread)))
+\end{styleR}
+
+This \textbf{diff.CONS} function is something I originally created for the frame time scripts as a modification to the \textbf{diff} function I mentioned earlier. You see the nature of \textbf{diff} will result in its output being at least one element shorter than its input, which is unacceptable when trying to add a column containing the consecutive differences of another column.
+
+To solve this issue of mismatched length, I append zeroes to the beginning or end of the data, with that decision being important. If you want the sum of a value and the difference to point forward, to the next value, then you want the zeroes attached at the end. If you want the sum to point backward, to the previous value, then you want the zeroes at the front. This is handled by the \textbf{DIR} argument, which is "Forward" by default.
+
+While the issue of directionality first came up for me with the frame time data, another appeared for these data and that is handling repeated values. Technically I could simply apply \textbf{diff.CONS} on the original \textbf{GPU-z} data, but I like having this isolated at the end of the file, making it easier to experiment with, or eventually remove. The reason applying it to the original temperature measurements might be better is as a way to avoid the repetition of the temperature measurements to match the number of sockets, cores, and threads that \textbf{merge} did. Solving this issue with \textbf{dataALL} is not very difficult though, by using the \textbf{lag} argument.
+
+For the \textbf{diff} function, this argument is the distance between the measurements to find the difference between, so rather than consecutive elements, you could have two, three, or sixteen elements between. Sixteen is a reasonable number here because the CPU I have been mostly collecting data with has that many threads. To make sure there are no issues with the length of the output though, that \textbf{lag} argument is also used to determine the number of times zero is repeated.
+
+Outside of the function, we see it being called and its output being assigned to the new "CPU\_Temp\_Diff" column of \textbf{dataALL}. The value used for the \textbf{lag} argument is the number of threads in the data, calculated by getting the length of the list of unique elements from the "Thread" column. The \textbf{unique} function in R is a pretty useful one as it removes any duplicates, but it does not necessarily come up very often.
+
+\subsection{dataALL Order and Combined.csv.bz2 Output}
+\begin{styleR}
+dataALL	=	dataALL[order(dataALL$Time, dataALL$Socket, dataALL$Core, dataALL$Thread),]
+
+write_csv(dataALL, "Combined.csv.bz2")
+\end{styleR}
+
+These lines are what end the "CPU Thermal – Data – AMD.r" script with the first applying a readable order to the data. The \textbf{order} function will sort a list, but it can be sorted according to multiple elements of different priorities. In this case the highest priority is "Time," so when reading \textbf{dataALL} you are advancing in time. The next priority is "Socket," followed by "Core," and ending with "Thread," which is the order of significance to those items.
+
+What the \textbf{order} function actually returns is a list of numbers, which is why it is being applied within the square bracket notation used for selecting elements by row and columns within some object. The order elements are selected in is the order R returns them, so this will work to assign a new order to \textbf{dataALL}. As I want every column included, there is nothing to the right of the comma.
+
+The very last line then is simply a call to \textbf{write\_csv} that will save \textbf{dataALL} to "Combined.csv.bz2." The function knows to compress it using bzip2 by the extension.

@@ -1,0 +1,691 @@
+\section{Scripting: CPU Thermal.py}
+The purpose of this script is to manage the launching of every application involved with the collection of data and the creation of the R scripts from reference versions. To accomplish these tasks, it will need information on the CPU being used, the CPU cooler, the test load you wish to run, how long it should wait before starting the test, how long to run the test load for, and if the load is being pulsed on and off, how long the script should wait before starting the next run. One of the changes I successfully made while working on this article was to improving the pulsing method, as before it would not start the next run rather than terminate the current one at the correct time. There are default values for each of these inputs though, and some can operate with a blank value given to them.
+
+Python can have its functionality expanded by loading in modules that add certain features. Two such modules I almost always take advantage of are \textit{os} and \textit{sys} that enable certain actions such as changing the default directory and passing commands to the OS to run. It is my convention to place the modules to be loaded at the top of the script, though later we will see a couple I import later. For those two, I added them when experimenting with adding certain features and decided to leave the \textit{import} command near the code that uses them. As such, the first line of the script is this:
+
+\subsection{Python Module Loading}
+\begin{stylePy}
+import os, sys, subprocess, time, psutil, shutil
+\end{stylePy}
+
+In addition to the \textit{os} and \textit{sys} modules I mentioned earlier, I am also importing \textit{subprocess}, \textit{time}, \textit{psutil}, and \textit{shutil}. The purpose of \textit{subprocess} is to allow Python to launch applications, though I have found it does not work in all cases or does not work well. We will see later then a mix of \textbf{subprocess} and \textbf{os.system} calls, as the latter is able to send commands to the operating system, including those to launch applications.
+
+The \textit{time} module enables the script to get the current time but also to pause for lengths of time with the \textbf{time.sleep} command. The current time is needed for pulsing tests, as will be explained later, for indicating when periods end, and I use the current date and time to name folders, to keep recordings separated.
+
+The \textit{psutil} module is used for a single purpose of getting information on running processes. It is necessary to forcibly terminate some applications, such as if they lack their own timer function, and getting the process information has proven necessary in some circumstances.
+
+The \textit{shutil} module is very helpful for moving and copying files, as is necessary at the end of the script.
+
+After these modules are imported I provide some information that might be useful or necessary for some, as well as a command to set the console window name. The symbol in Python to comment out a line is \#.
+
+\begin{stylePy}
+#	for Intel CPUs, uses Power Gadget
+#		https://software.intel.com/en-us/articles/intel-power-gadget
+#	for AMD CPUs, uses uProf and GPUz (to get the CPU temperature)
+#		https://developer.amd.com/amd-uprof/
+#		https://www.techpowerup.com/gpuz/
+
+os.system("title CPU Thermal Testing")
+
+print("For Intel CPUs:\
+\n\tPower Gadget must be installed\
+\n\thttps://software.intel.com/en-us/articles/intel-power-gadget\
+\nFor AMD CPUs:\
+\n\tAMD uProf and GPUz must be installed\
+\n\thttps://developer.amd.com/amd-uprof/\
+\n\thttps://www.techpowerup.com/gpuz/\
+\n\tGPU-z needs to place its Sensor Log in the same folder as this script\
+\n")
+\end{stylePy}
+
+The information contained in the comments at the top are repeated in the \textbf{print} command so a user of the scripts will see them without having to view the script's code. Also the comment version I think is easier to read as the special characters for new lines, tabs, and escaping the end-of-line character are not necessary.
+
+You can see there is an additional line printed than in the comments, specifying the GPU-z Sensor Log must be saved in the same folder as the script. Technically this is not completely accurate as the script will also attempt to find the file on the desktop, but the method I am using to identify the location of the desktop is not rigorous enough to be relied upon. A Python script knows its own location though, and so if the log is placed in the same folder, it can easily be found.
+
+Between the information is the first example of the \textbf{os.system} command, which functions by sending its argument to the operating system as a string. In this case the argument is a simple string starting with \textbf{title}. This will set the title of the console window to be the string that follows the command, and it works just as well with Python consoles as traditional Command Prompt consoles on Windows.
+
+\subsection{Default Values}
+\begin{stylePy}
+#	defaults
+duration	=	3600
+#	length of Load period
+warm		=	300
+#	length of Warm-up Period
+coolCOEF	=	1
+#	ratio between Load and Cooldown periods
+pulse	=	5
+#	length of pause between loads, if test is pulsing
+\end{stylePy}
+
+A convention of mine is to try to place default values near the beginning of a script. With the exception of \textbf{coolCOEF}, each of these values can be changed by providing a value when the script asks for input. These values act as defaults for those inputs, allowing one to simply press Enter rather than providing input.
+
+The \textbf{coolCOEF} variable sets the ratio between the test load and Cooldown periods, and as you can see the default is 1. This means the Cooldown period that follows the test period will be the same length as the test period (and the default for that is 3600 seconds or one hour). If you wish a shorter Cooldown period, reduce this value, and increase it if you want a longer one.
+
+\begin{stylePy}
+#	to add tests it is necessary to add Shortcut name, entry to TESTfunc, its own function, and its options list to the main OPTIONS list
+\end{stylePy}
+
+Though I will get to the process for adding new tests later, this comment specifies the locations where the relevant information or new functions must be added. The first two of these locations follow the comment immediately, but it is best to approach them separately.
+
+\subsection{Application Shortcuts}
+\begin{stylePy}
+#	shortcut name lists
+lnkCINEBENCHR20	=	"Cinebench R20.lnk"
+lnkCINEBENCHR23	=	"Cinebench R23.lnk"
+lnkAMDuProf		=	"AMDuProfCLI.lnk"
+lnkGPUz			=	"GPU-z.lnk"
+lnkPowerGadget	=	"PowerLog3.0.lnk"
+lnk3DMark		=	"3DMarkCmd.lnk"
+lnkPrime95		=	"Prime95.lnk"
+\end{stylePy}
+
+In order for Python to launch an application, it is necessary it knows the location of the application's executable. As that can vary between systems, and creating system variables is not exactly the most approachable task, I decided to experiment with shortcuts instead and found they work perfectly. The shortcuts do need to be within the same folder as the script and their names need to match those in this list (which can be edited easily), but they still enable one to have the applications installed in any location.
+
+By the way, there can be some issues if these values are not formatted properly, such as missing the .lnk extension Windows typically hides. To address these, there is a \textbf{lnkCheck} function defined and run later in this script, ensuring the extension is present and adding quotes to make them strings, in case that was neglected.
+
+\subsection{TESTfunc and TEST Assignment}
+\begin{stylePy}
+#	Function to assign selected test to generic variable
+def	TESTfunc(CODE):
+	TESTS	=	[
+		CINEBENCHr20,	#	1
+		CINEBENCHr23,	#	2
+		Prime95,		#	3
+		None,			#	4
+		None,			#	5
+		None,			#	6
+		None,			#	7
+		None,			#	8
+		_3DMARK			#	9
+		]
+	global TEST
+	TEST	=	TESTS[int(CODE[0])-1]
+\end{stylePy}
+
+I will admit this is an odd function, but it makes adding tests in the future easier. In theory I could automate this some more, but am concerned the additional complexity of that solution would defeat the intended purpose of simplifying things. What truly makes this function odd is its references to various things that come later in the script.
+
+The purpose of the \textbf{TESTfunc} function is to assign the custom function for launching a test to the more generic variable name, \textbf{TEST}. The entries in the \textbf{TESTS} lists are all custom functions defined later and based on the \textbf{CODE} argument, which is the three digit code for selecting the test. From this list, the selected test is assigned to \textbf{TEST}. The \textbf{None} entries act as spacers so the \textbf{\_3DMARK} function can be at the later position. (Variable and function names cannot start with a digit, thus the underscore.) I prefer 3DMark be identified with code number 9 because it requires the Professional Edition and so is unlikely to be on many computers.
+
+After the \textbf{TESTS} list is created the \textbf{global} command is used to create \textbf{TEST} as a global variable. This will make it and its value accessible outside of this function, as normally values created within a function are restricted to its environment, and thus inaccessible elsewhere. After this \textbf{TEST} is given its value by selecting a specific index from the \textbf{TESTS} list. The \textbf{CODE} argument is actually a string, so after selecting just the first character with the square brackets and 0, it is made an integer. The reason for subtracting one is also the reason for the 0; Python starts indices at 0. As I start at 1, the subtraction is necessary to get the correct item from \textbf{TESTS}.
+
+Technically a function should have a \textbf{return} in it to indicate when to exit the function and specify the value to return as an output. In this case though, there is no need for it as the work is done and no value needs to be returned, so I omitted that special word. We will see it in other custom functions though
+
+\subsection{scriptPath}
+\begin{stylePy}
+scriptPath	=	sys.argv[0].rsplit("\\", 1)[0] + "\\"
+\end{stylePy}
+
+This single line of code is to identify and store the path to the script, and while it looks complicated, is fairly simple to break apart and explain. The first part is the \textbf{sys.argv} variable, which is actually the list of arguments passed to the script when it is run. I take advantage of this in many of my scripts because it allows one to identify files dropped onto the Python script, and have it act on them, even though that is not the idea here. I just want to know where this specific script is, because then I can position other things, like the shortcuts, relative to it.
+
+As I said, the variable is a list of arguments and the first argument is always the file path of the script, and so I use 0 to select it. After that the \textbf{rsplit} function is used because I do not need the name of this script in the path, just the folder. This function stands for "reverse split" as it will split the string from right to left, instead of left to right. The first argument for this function is the term to split at, which is just "\" but because that is a special character for Python, it is necessary to escape its special function. This is achieved by placing another "\" ahead of it. The second argument is 1 and is indicating how many times to split the string, and as I only want to take off the filename, which is the only thing after the final back-slash, only one split is necessary.
+
+Because the split functions, \textbf{split} and \textbf{rsplit}, return a list of strings, it is necessary to select the specific string we are interested in, which is why there is another "[0]" term here. The first element will be the path while the second is the file name. The split functions also remove the character they separate at, which is why I add a back-slash back at the end of this line. Effectively I have closed the directory path by doing this, so I can now freely attach a filename to the end of \textbf{scriptPath} without issue in the future.
+
+\subsection{lnkCheck Function}
+\begin{stylePy}
+def lnkCheck(LNK):
+	if not LNK.endswith(".lnk"):
+		LNK	=	LNK + ".lnk"
+	if not LNK.startswith("\"") and not LNK.endswith("\""):
+		if " " in LNK:
+			return("\"" + LNK + "\"")
+	return(LNK)
+\end{stylePy}
+
+Yet another custom function and this one exists just to make sure the shortcuts are properly formatted. It takes the shortcut name as the \textbf{LNK} argument and the first thing it does is ensure it has the proper file extension. If one were to just copy and paste the name of the shortcut, this would not be included and so it makes sense to check for its presence.
+
+Next the function checks if the shortcut name has quotes at the beginning and end of it, which is important if there is a space in the name. Spaces can be used to separate commands in many situations, but quotes prevent that interpretation. If the name lacks the quotes, the function checks if the name contains a space, and if it does then quotes are placed at the beginning and end of the name.
+
+\subsection{lnkCheck Application}
+\begin{stylePy}
+lnkCINEBENCHR20	=	lnkCheck(lnkCINEBENCHR20)
+lnkCINEBENCHR23	=	lnkCheck(lnkCINEBENCHR23)
+lnkAMDuProf		=	lnkCheck(lnkAMDuProf)
+lnkGPUz			=	lnkCheck(lnkGPUz)
+lnkPowerGadget	=	lnkCheck(lnkPowerGadget)
+lnk3DMark		=	lnkCheck(lnk3DMark)
+lnkPrime95		=	lnkCheck(lnkPrime95)
+\end{stylePy}
+
+Even though it is only the two Cinebench-related shortcuts that will be impacted by the function, I still pass each shortcut name to the function. If additional shortcuts are added, if the values were not set correctly earlier, or if you have certain readability preferences calls to this function may prove necessary. For example, I prefer to not have quotes within the shortcut names as I have written them, hence why \textbf{lnkCheck} is necessary for the two Cinebench names to correct this for Python.
+
+\subsection{INPUT Function}
+\begin{stylePy}
+def INPUT(DEFAULT, TEXT = "Default: !DEF!"):
+	return(input(TEXT.replace("!DEF!", str(DEFAULT))) or DEFAULT)
+\end{stylePy}
+
+Python has the ability to request user input when a script is being run, but I find the code for doing that and having some default value a little cumbersome. To address that, I made this function to clean it up. As you can see my \textbf{INPUT} function has two arguments, with the second argument having a default value. You can give a default value for a function by setting the name of the argument to be equal to whatever the default value you want for it.
+
+Normally the way requesting user input works is by setting some variable name to be assigned the value of the \textbf{input} function, using the equals sign like I have been. The \textbf{input} function will print whatever text you provide it and then wait for the user to provide some input and press Enter. If you want the user to be able to skip this, but for a value to still be assigned to the variable, then you need to use the \textbf{or} command and give the desired, default value.
+
+I consider it a best practice to share the default value with the user, so they can review it before skipping. This means that value will appear twice in the line of code, and so to reduce repetition and ensure it is the same value in both places, using a custom function is appropriate. That is not the only reason I created this \textbf{INPUT} function though, as I also want the default value in an easy to find place. Rather than having it within the text to be printed and after this length of text, which can vary, I have the \textbf{DEFAULT} argument as the first argument. This makes it much easier to find and edit the value whenever necessary. We will see this function used quite a bit later, but I will state here it does work in a similar manner to the built-in \textbf{input} function, in that \textbf{INPUT} must also have its value assigned to a variable.
+
+The next blocks of code are for building the commands to launch the supported tests. To make it a little easier to add new tests, I have made some changes to where certain things are located, compared to my earlier iterations of this script.
+
+\subsection{Cinebench R20 Options and Function}
+% \subsection{optCineR20 and CINEBENCHr20}
+\begin{stylePy}
+optCineR20	=	[
+	"100 \t-\t Cinebench R20 - Multi-thread - Constant",
+	"110 \t-\t Cinebench R20 - Single Thread - Constant",
+	"101 \t-\t Cinebench R20 - Multi-thread - Pulse",
+	"111 \t-\t Cinebench R20 - Single Thread - Pulse"
+]
+def CINEBENCHr20(CODE):
+	global TESTname
+	TESTname	=	"Cinebench R20"
+	global MULTI
+	
+	if CODE[1] is "0":
+		MULTI	=	"TRUE"
+		TESTname	=	TESTname + " - Multi-thread"
+		cinebenchCpu	=	"g_cinebenchCpuXTest=true"
+	else:
+		MULTI	=	"FALSE"
+		TESTname	=	TESTname + " - Single-thread"
+		cinebenchCpu	=	"g_cinebenchCpu1Test=true"
+	
+	if CODE[2] is "0":
+		TESTname	=	TESTname + " - Constant"
+		CinebenchMinimum	=	"g_CinebenchMinimumTestDuration=" + str(duration)
+	else:
+		TESTname	=	TESTname + " - Pulse"
+		CinebenchMinimum	=	""
+	
+	return(lnkCINEBENCHR20 + " " + cinebenchCpu + " " + CinebenchMinimum)
+\end{stylePy}
+
+The two objects in this block are related with the first being the list of supported configurations and the second is the function for building the command to launch the test; \textbf{CINEBENCHr20}. By having both the list and function near each other, it is easy to confirm each configuration can be executed by the commands. Later the \textbf{optCineR20} list and others will be combined to create the list of supported tests and configurations.
+
+Though I have used the related "\n" symbol earlier, I have not explained it or the "\t" symbol here. The former instructs the function for printing the string to add a new line while the latter will add a tab. I use it here to have a clear separation between the code numbers and names of the tests.
+
+The only argument for \textbf{CINEBENCHr20} is \textbf{CODE}, the code number the user provides. At the time I decided I wanted the naming convention to be uppercase for these function names, but to make it easier to catch where the number is, I use a lowercase "r" in the name. (Likely because I forgot, I failed to follow this convention when I added the Prime 95 function, but it is not that big a deal one way or another, provided the naming is clear.)
+
+The first thing I do within these functions is create the \textbf{TESTname} variable and make it a \textit{global} variable so it is accessible outside this function. Once created as a global variable, I give \textbf{TESTname} the start of its value, which is "Cinebench R20" in this case. Later, as the value for \textbf{CODE} is interpreted, more will be added to this string, but there is something else to cover first. A second global variable is created, \textbf{MULTI}, and it is purely to identify if the test is multithreaded or not. Both \textbf{MULTI} and \textbf{TESTname} will be passed to the appropriate R script later, with \textbf{TESTname} being used to give a readable name for the text and graph outputs while \textbf{MULTI} indicates which graphs should be produced.
+
+With these variable set it is time to start breaking down the value of \textbf{CODE} with \textbf{if} statements. You may notice it does not look at the first character in \textbf{CODE} and that is simply because that first digit will determine which of these test functions will be used. By running this function, we already know what that first character is.
+
+The second character of \textbf{CODE} sets if Cinebench R20 should run the multi-threaded or single threaded version of its test, and so three variables must be set. The first is the \textbf{MULTI} global just created, and it is assigned "TRUE" or "FALSE" depending on what is appropriate. It is important to note that these are strings and not the Boolean values Python can work with, which are \textit{True} and \textit{False}. This is because the value for \textbf{MULTI} is going to be placed into an R script, so Python needs to treat it as a string, and the specific value needs to match the Boolean values R uses, which are all uppercase.
+
+The next variable set is the \textbf{TESTname} variable, which takes what had been provided earlier and appends to the end of it the appropriate label. Concatenating strings like this in Python is quite simple, as it just uses the traditional addition symbol.
+
+The third and final variable set is named \textbf{cinebenchCpu} to match the naming of the actual Cinebench R20 argument. For the multi-threaded test the argument "g\_cinebenchCpuXTest" must be given the value of "true" but rather than "false" to run the single-thread version, a different argument, "g\_cinebenchCpu1Test" must be set to true. Why not use a single argument to multi-threading on and off? I have not tested to confirm, but my guess is so one can run them together, though there is also the "g\_cinebenchAllTests" argument for that. Perhaps this design is carried over from a time Cinebench offered more tests than just the two, but it will also allow more tests to be added in the future, if Maxon wishes to. Still, as my use is effectively just to toggle between multi-threaded and single threaded, I am able to use a plain \textit{if...else} statement rather than needing to check the \textbf{CODE} character with additional statements.
+
+The third character of \textbf{CODE} must now be checked, which is to determine if the test is constant or pulsed, which I may also describe as looped or repeated. If the character is "0" then Cinebench R20 will be run for the length of the test period, but if it is not then it will instead run for a single completion of the test, this Python script will wait for a period and then launch Cinebench R20 again, repeating this cycle continuing until the test period elapses. The \textbf{PULSEx} function later in this script is what will handle that repeating, so do not worry that there is nothing here to achieve this behavior.
+
+The first step within the \textit{if...else} statement is to modify the \textbf{TESTname} variable, adding either "Constant" or "Pulse" to it, so the R outputs can be appropriately labeled. The second step is to set the value for \textbf{CinebenchMinimum}, the variable to control the "g\_CinebenchMinimumTestDuration" argument, which has a suitably descriptive name. When the test is to be run constantly for the period, this argument is used and given the length of time it needs to run, in seconds, but if the test is to pulse, then this variable is an empty string. This way the argument is simply not passed to Cinebench R20 at all and it will perform a single run.
+
+I should quickly explain the \textbf{duration} variable used here will be created and assigned its value later. As long as this function is not run until after the variable exists and has a value, there will not be a conflict. Also, the variable will be an integer, rather than a string, which is why the \textbf{str} function to make it a string must be used here. Python does not know to convert the integer to a string so two strings can be concatenated together, nor to convert a string to a number so addition can be done.
+
+The last line of this function is the \textbf{return} function that will close this out by sending a string that concatenates the shortcut to Cinebench R20 with the two arguments set by this function. The first argument indicates if it should be multi-threaded or single threaded while the second either gives the length of the test or an empty string. Spaces separate these, as is necessary for the arguments to be correctly read and executed.
+
+To be very clear here, this is all this and the other test functions are meant to do; create a string for launching the test. We will see later that Python will launch the test then as a subprocess, giving it some control over it. Even though Cinebench R20 can be set to run for only a specific length of time, I still take advantage of Python's control over subprocesses to kill it at the end of the test period.
+
+\subsection{Cinebench R23 Options and Function}
+% \subsection{optCineR23 and CINEBENCHr23}
+\begin{stylePy}
+optCineR23	=	[
+	"200 \t-\t Cinebench R23 - Multi-thread - Constant",
+	"210 \t-\t Cinebench R23 - Single Thread - Constant",
+	"201 \t-\t Cinebench R23 - Multi-thread - Pulse",
+	"211 \t-\t Cinebench R23 - Single Thread - Pulse"
+]
+def CINEBENCHr23(CODE):
+	global TESTname
+	TESTname	=	"Cinebench R23"
+	global MULTI
+	
+	if CODE[1] is "0":
+		MULTI	=	"TRUE"
+		TESTname	=	TESTname + " - Multi-thread"
+		cinebenchCpu	=	"g_cinebenchCpuXTest=true"
+	else:
+		MULTI	=	"FALSE"
+		TESTname	=	TESTname + " - Single-thread"
+		cinebenchCpu	=	"g_cinebenchCpu1Test=true"
+	
+	if CODE[2] is "0":
+		TESTname	=	TESTname + " - Constant"
+		CinebenchMinimum	=	"g_CinebenchMinimumTestDuration=" + str(duration)
+	else:
+		TESTname	=	TESTname + " - Pulse"
+		CinebenchMinimum	=	""
+	
+	return(lnkCINEBENCHR23 + " " + cinebenchCpu + " " + CinebenchMinimum)
+\end{stylePy}
+This block of code may look very familiar, as it is nearly identical to the previous. Cinebenchs R20 and R23 operate in identical manners making the only differences to these functions being the function name, the \textbf{TESTname} value, and the shortcut used in \textbf{return}. Initially I actually had a single Cinebench function that would look at the \textbf{CODE} value to determine which to use, but I consider it better form to keep each test separate, making adding and potentially subtracting tests easier in the future.
+
+As this function is all but identical to what I covered before, I see no reason to not skip to the next code block, which is for 3DMark tests and a little more complicated.
+
+\subsection{3DMark Options and Function}
+% \subsection{opt3DMark and \_3DMARK}
+\begin{stylePy}
+opt3DMark	=	[
+	"901 \t-\t 3DMark Fire Strike - Physics",
+	"911 \t-\t 3DMark Fire Strike - Combined",
+	"921 \t-\t 3DMark Time Spy - CPU",
+	"All 3DMark tests pulse due to loading time",
+	"It is necessary for this console to be focused for 3DMark to launch correctly"
+]
+#	notes need to be at the end of the list, as the default code is pulled from the first line
+def	_3DMARK(CODE):
+	global TESTname
+	TESTname	=	"3DMark"
+
+	global MULTI
+	MULTI	=	"TRUE"
+	
+	if CODE[1] == "0":
+		TESTname	=	TESTname + " - Fire Strike - Physics"
+		defin	=	"firestrike_CPU"
+	if CODE[1] == "1":
+		TESTname	=	TESTname + " - Fire Strike - Combined"
+		defin	=	"firestrike_Combined"
+	if CODE[1] == "2":
+		TESTname	=	TESTname + " - Time Spy - CPU"
+		defin	=	"timespy_CPU"
+	
+	if os.path.exists(scriptPath + "Thermal_Definitions\\" + defin + ".3dmdef"):
+		return(lnk3DMark + " --definition=\"" + scriptPath + "Thermal_Definitions\\" + defin + ".3dmdef\" --loop=0 --audio=off --online=off")
+	else:
+		input("No valid 3DMark definion files found.\n Press Enter to quit.")
+		sys.exit("No definition files found")
+\end{stylePy}
+
+As only the Professional Edition of 3DMark supports command line instructions, this code must be a little different than what we saw earlier, in addition to the changes necessary for 3DMark. One of these changes is starting the code numbers with 9 as opposed to 3. I would prefer a number in the sequence not be commonly skipped just because this software is likely to be rare amongst normal users. Related to this is another quirk which is actually to work with a little trick I set up and so will cover later. Simply put, it is necessary the first line of \textbf{opt3DMark} begin with a code number, so the warning about 3DMark always pulsing and needing to focus the console window must come after the list of codes.
+
+Reading those two lines, the first is that all of these 3DMark tests will pulse, and this is unavoidable. The CPU-focused 3DMark tests do need to be reloaded for each run, so there will always be that period between runs. The second is that 3DMark does require the console window that launches the test to be focused by Windows at the time of launching. Failing to do so causes problems, such as the test not being run in fullscreen and not repeating as it should. This is not a significant issue though, especially with a proper Warm-up period length, as any time after the script launches the appropriate monitoring programs (AMD μProf, GPU-z, or Intel Power Gadget) you just need to click on the window, and each of those should be opened within a second or two of providing the last input.
+
+Getting into the \textbf{\_3DMARK} function now I want to address that the name begins with an underscore because Python does not allow object names to start with a number. Just like the other test functions, \textbf{CODE} is the only argument and at the start of the function the \textbf{TESTname} and \textbf{MULTI} variables are created as global variables and both are given values. These tests are only multi-threaded from my observation, and so there is no need for a special check concerning \textbf{MULTI}. They are not as heavily threaded as the other tests, but more than one thread will be loaded, none the less.
+
+As these tests will only pulse, only the second character to \textbf{CODE} needs to be checked. The third character is only 1 in the list because that denotes a pulsed load rather than a constant load, following the code names for the Cinebench tests.
+
+Within the first \textbf{if} statement that looks at the \textbf{CODE} value, \textbf{TESTname} has "Fire Strike – Physics" appended to it and the \textbf{defin} variable is set to be "firestrike\_CPU." This is the filename for the 3DMark definition file for that specific test, and "firestrike\_Combined" and "timespy\_CPU" are similar for those tests. As they are in fact named definition files, \textbf{defin} seems the most appropriate variable name.
+
+The last bit to the function checks if there is a "Thermal Definitions" folder at the path with this script and if the desired definition file is inside. At one point I believe the definition files this script uses were present in the 3DMark folder, with the others, but that no longer appears to be the case. This means the "Thermal Definitions" folder and its contents I provide with these scripts are necessary to use the 3DMark tests. If the files are not found, then this function will state as much and wait for you to press Enter before exiting the script. The "Thermal Definitions" folder should also be used by I have observed 3DMark removing any custom definition files placed in its directory, where it keeps its own definition files.
+
+Within the command for launching 3DMark, I have also set the arguments \textbf{loop}, \textbf{audio} and \textbf{online}. The last two are both "off" so there will not be any audio played and the results will not be uploaded or verified. The first argument, \textbf{loop}, controls if the test is repeated or not, but does so by repeating the test. For seamless looping a custom definition file is necessary, but as I already mentioned, the CPU tests cannot be looped like this, making this argument the only one that matters here.
+
+\subsection{Prime95 Options and Function}
+% \subsection{optPrime95 and Prime95}
+\begin{stylePy}
+optPrime95	=	[
+	"300 \t-\t Prime95 Torture Test"
+]
+def Prime95(CODE):
+	global TESTname
+	TESTname	=	"Prime95 Torture Test"
+	
+	global MULTI
+	MULTI	=	"TRUE"
+	return(lnkPrime95 + " -t")
+\end{stylePy}
+
+Prime 95 only has the one stress test configuration, at least from what I can determine, so its function and list are quite short. The \textbf{TESTname} and \textbf{MULTI} variables still need to be made global and given values though, but then the returned string can just be the shortcut with the "-t" flag. That flag tells Prime 95 to run its Torture Test.
+
+Technically no arguments are needed for this \textbf{Prime95} function, but I prefer to keep it just the same, for consistency with the others, and in case I learn there is a way to control the test's functionality in the future.
+
+By the way, in theory it should be possible to force pulsing by killing the test and restarting it after a time. I have some early work done on the function to achieve this, but it is not complete yet.
+
+\subsection{OPTIONS List Building}
+\begin{stylePy}
+OPTIONS	=	[]
+
+if	os.path.exists(scriptPath + lnkCINEBENCHR20.replace("\"", "")):
+	OPTIONS	=	OPTIONS + optCineR20 + [""]
+if	os.path.exists(scriptPath + lnkCINEBENCHR23.replace("\"", "")):
+	OPTIONS	=	OPTIONS + optCineR23 + [""]
+if	os.path.exists(scriptPath + lnkPrime95.replace("\"", "")):
+	OPTIONS	=	OPTIONS + optPrime95 + [""]
+if	os.path.exists(scriptPath + lnk3DMark.replace("\"", "")):
+	OPTIONS	=	OPTIONS + opt3DMark + [""]
+\end{stylePy}
+
+Now we see why I have the separated options lists for each test function. It is so the larger \textbf{OPTIONS} list can be built from them, but only after checking if the appropriate shortcut is there. With this design the 3DMark options, for example, will not be shown if the shortcut is missing, which I am interpreting as the test not being installed. There is another advantage to this design, but we will see that a little later.
+
+\subsection{PULSE Function (depeciated)}
+\begin{stylePy}
+def PULSE(TEST):
+	t_end	=	time.time() + duration
+	while time.time() < t_end:
+		Bench	=	subprocess.call(TEST(TESTcode), shell = True)
+		if	time.time() >= t_end:
+			break
+		time.sleep(pulse)
+\end{stylePy}
+
+When going through the scripts prior to this write up, I decided I really wanted to abstract some things, and among those things was how the test being run is pulsed. Instead of having it specifically written in at the time it is needed, I decided to make it a function unto itself to make the code to run the test cleaner. Also I had hope of fixing a specific issue, and at the time I was not able to, but I have now figured it out. Before getting to the explanation though, I want to finish covering this function, which is not necessary in the script anymore, but I want to keep it as a record.
+
+The only argument is \textbf{TEST} which will actually be the same as the variable set earlier, in the \textbf{TESTfunc} function that sets the variable to the desired test function. Technically it is not necessary here then, as the function would be able to get the value of that variable regardless, but this is a kind of redundancy I like as it allows for greater control when running the function manually.
+
+Within the function the first step is to set a \textbf{t\_end} variable, which will be the current time when this function is executed, gotten with \textbf{time.time}, plus the \textbf{duration} value for the length of the test period. Next a \textbf{while} loop is opened, which will loop its contents as long as the indicated condition is true. That condition is the current time is less than the \textbf{t\_end} value.
+
+Within the \textbf{while} loop the \textbf{Bench} object is created, but it is unlike any other object or variable made before. It is set to be the subprocess created by running the desired test, and it is by manipulating \textbf{Bench} within the script that Python can manipulate whatever the test is. There are probably a lot of things that Python can do here, but all I really care about is the ability to terminate the test when I desire, and we will see how to achieve that later.
+
+Within the \textbf{subprocess.call} function we can see the \textbf{TEST(TESTcode)} value is the first argument. The \textbf{TEST} object has already been explained as holding the selected test and \textbf{TESTcode} is simply the variable holding the three digit code for configuring the test. The second argument is \textbf{shell} and it is set to \textit{True} as is required for everything to work. This tells Python to pass the first argument as a shell command, and I believe this is necessary when the command is a string and includes arguments.
+
+After this we see an \textbf{if} statement that checks if the current time has exceeded \textbf{t\_end}. If that time has passed then \textbf{break} is used to exit the \textbf{while} loop before getting to the \textbf{time.sleep} function that has Python wait the provided length of time; \textbf{pulse}. This is so a controlled amount of time passes between each run of the test.
+
+The problem I teased and said I had solved earlier is how to have Python monitor the passage of time while the test is running. The \textbf{subprocess.call} function blocks Python from continuing during the script. There is the similar \textbf{subprocess.Popen} function that does not have such a block, but then some means of monitoring when the test run finishes is necessary, as we do not want \textbf{time.sleep} to start until after a run ends. Fortunately, after some digging into the differences between these two \textit{subprocess} functions, so I could explain them in this article, I have figured it out. (I am very serious when I say one of the reasons I write these articles is to improve the scripts.)
+
+\subsection{PULSEx Function}
+\begin{stylePy}
+def PULSEx(TEST):
+	t_end	=	time.time() + duration
+	
+	while time.time() < t_end:
+		Bench	=	subprocess.Popen(TEST(TESTcode), shell = True)
+		
+		#	Bench.wait() with checking
+		while Bench.poll() is None:
+			if	time.time() >= t_end:
+				kill(Bench.pid)
+				Bench.kill()
+				return
+			time.sleep(1)
+		
+		#	time.sleep() with checking
+		t_pulse	=	time.time() + pulse
+		while time.time() < t_pulse:
+			if	time.time() >= t_end:
+				return
+			time.sleep(1)
+	return
+\end{stylePy}
+
+Here is the new \textbf{PULSEx} function, so named because it is technically still experimental, and to set it apart from the previous function. As you can see, it starts much the same, creating the \textbf{t\_end} variable, and while the rest looks different, it is actually quite similar, just with some parts pulled out and converted to a different approach.
+
+Within the familiar \textbf{while} loop we have the \textbf{subprocess.Popen} function to launch the test and assign it to the \textbf{Bench} object. Previously the \textbf{subprocess.call} function was used, and as I explained earlier one of the differences was whether the function blocked Python from continuing to execute the script. The problem had been ensuring a test run finishes before calling \textbf{time.sleep} for the pulse pause. At the same time, we also want to be able to interrupt either the test or the pause when the time is up, in order to end the test period and start the timer for the Cooldown period. The solution I came up with was to write a new block and a new pause.
+
+First is the new block, which is another \textbf{while} loop with the condition being the value of \textbf{Bench.poll()}. This will return "None" as long as the subprocess assigned to \textbf{Bench} is running, which is not the most intuitive design, but we can ignore that for now. The loop will continue as long as the test is running, creating a similar effect to the block, but with whatever code is inside the loop executing repeatedly.
+
+The code within the loop is an \textbf{if} statement constantly checking if the current time is past the \textbf{t\_end} value. If it is then the \textbf{kill} function I will cover next and \textbf{Bench.kill} are both run to terminate the test. After these kill commands are sent is the \textbf{return} command, telling Python to exit this function, as it is no longer necessary.
+
+Outside of the \textbf{if}statement but still within the \textbf{while} loop is \textbf{time.sleep(1)}, which makes each iteration of the loop pause for one second. Without this, Python would be continuously checking the time likely at a rate unnecessary and inappropriate for our needs her. With that command the checking will be less frequent but not too slow as being off by a single second should not be an issue.
+
+While that \textbf{while} loop recreates the block of \textbf{subprocess.call}, combined with the ability to kill the test at the appropriate time, this next loop recreates the pulse period. First \textbf{t\_pulse} is made by adding the \textbf{pulse} value to the current time, and as this is within the main \textbf{while} loop, that time will be updated after each run of the test. A new \textbf{while} loop is created then, so the check of if the test period has ended is checked every second. The kill commands are not needed in this loop as the test should have already finished by the time this loop begins. Actually the kill commands should not be there because Python will throw an error if it tries to kill a process that is not present.
+
+Once the pulse period has elapsed, the main \textbf{while} loop will repeat itself for as long as the test period is still going. At the end of the function and outside the \textbf{while} loop I have \textbf{return} but it is possibly unnecessary. Perhaps I will remove it at some point, but it does not hurt to remain.
+
+In the script I next have \textbf{PULSEk}, a variant of the above function that will terminate the test after a set period of time, as opposed to \textbf{PULSEx} that will allow each run to complete, except the last run. Having the ability to control exactly how long a load is present on the CPU is definitely a nice idea for possible experiments, but I do not consider it very necessary, which is why I have not continued to work on this function and am not covering it in this article. It is in the script, however, if you wish to review it yourself.
+
+\subsection{kill Function}
+\begin{stylePy}
+def	kill(proc_pid):
+	process	=	psutil.Process(proc_pid)
+	for proc in process.children(recursive=True):
+		proc.kill()
+	process.kill()
+\end{stylePy}
+
+I mentioned previously when touching on \textbf{subprocess.call} that Python has the ability to terminate a subprocess by manipulating the name of the object it is assigned to. That is true for it and \textbf{subprocess.Popen}, but I observed that sometimes Python is not successful at telling the subprocess to terminate, which is why this \textbf{kill} function exists. Even if \textbf{Bench} cannot be easily terminated, its process ID can be gotten, which is what the \textbf{proc\_pid} argument is for. We will see later that value is gotten with \textbf{Bench.pid}. Using that information the \textbf{psutil.Process} function is able to identify the specific process, which is then assigned to the \textbf{process} variable. With the following \textbf{for} loop, every child process of \textbf{process} is found and terminated using the \textbf{kill} command. After the children are removed, \textbf{process} itself is killed.
+
+There likely is a better explanation to all of that than I can give, but this is an example of a time I found the solution through searches and basically copied it into my script without a complete understanding of the intricacies.
+
+\subsection{timeFUT Function}
+\begin{stylePy}
+def timeFUT(END):
+	return(time.strftime("%I:%M %p", time.localtime(time.time() + END)))
+\end{stylePy}
+
+This function is for a useful quality of life change that I at least will enjoy. Its purpose is to show a time some distance in the future in a readable format. The \textbf{time.strftime} function is so named as it produces a string format from a time value stored as a tuple. All that matters about tuples right now is they are a kind of data storage object for Python.
+
+The format of the output string is controlled by the first argument I have written there, with the two-character symbols translating to specific representations. The table of these symbols can be found in the \href{https://docs.python.org/3.0/library/time.html#time.strftime}{ documentation for \textit{time}} but what I am using here is "\%I" for a 12 hour clock decimal of the hour, "\%M"for a decimal for the minute, and then "\%p" for if it is AM or PM. This formatting matches the typical clock appearance on Windows.
+
+The second argument for this \textit{time} function is what needs to be a tuple, which is not what I actually want to work in. To address that I can use the \textbf{time.localtime} function that will convert a UTC time to the appropriate tuple, based on my location. The \textbf{time.time} function returns UTC time for when the function is run, and as UTC is a decimal representation of seconds since a fixed time, we can add a value of seconds to it, such as \textbf{duration}.
+
+\subsection{CPUname}
+\begin{stylePy}
+import cpuinfo
+CPUname		=	BRAND	=	cpuinfo.get_cpu_info()['brand']
+CPUname		=	INPUT(CPUname,	"CPU Name (default: !DEF!) : ")
+\end{stylePy}
+
+As the name suggests, the \textit{cpuinfo} module gets information about the CPU into Python, and actually more information than I need. To get just want I want I select the "brand" element from the \textbf{cpuinfo.get\_cpu\_info} function output and store that to both the \textbf{CPUname} and \textbf{BRAND} variable. Skipping the purpose of the latter variable for now, the next line allows the user to provide a different name for the CPU, but thanks to the \textbf{INPUT} function I covered earlier the user can skip the question by just pressing Enter. The value the \textbf{cpuinfo.get\_cpu\_info} function got will be used as the default and allow you to continue.
+
+The purpose of the \textbf{BRAND} variable is so Python can know which monitoring software to launch, because the different CPU brands have different requirements. By assigning it the same value as \textbf{CPUname}, the next block of code can be a little more efficient as it reduces the value to just the brand name, or asks the user to specify.
+
+\subsection{BRAND}
+\begin{stylePy}
+BRAND	=	""
+if "Intel" in CPUname:
+	BRAND	=	"Intel"
+elif "AMD" in CPUname:
+	BRAND	=	"AMD"
+elif BRAND == "":
+	BRAND	=	INPUT("", 		"CPU Brand (AMD or Intel):")
+\end{stylePy}
+
+With the \textbf{if} and \textbf{elif}, for the else if concept, the script checks if either "Intel" or "AMD" are in the \textbf{CPUname} or \textbf{BRAND} variables. The reason for checking both like this, and for having \textbf{BRAND} initially be the output from \textbf{cpuinfo.get\_cpu\_info}, is to allow one to provide a CPU name that lacks the brand name, but still automatically get the information. For example, if one was interested in testing a family of AMD CPUs but decided to only provide the specific name, such as "2700X," the initial value of \textbf{BRAND} would still identify the brand correctly, and thus the user will not need to specify AMD.
+
+To be clear, the script does not support processors other than AMD or Intel.
+
+\subsection{COOLERname}
+\begin{stylePy}
+COOLERname	=	INPUT("",		"CPU Cooler Name (default empty): ")
+\end{stylePy}
+
+As the code indicates, this line is to identify the name of the CPU cooler being used, and by default it is an empty string. When collecting data for comparisons though, \textbf{COOLERname} is a very important variable and so should not be left empty. If present, this variable will be used to create another folder layer for collecting the recorded data, and thus enable the data from the same cooler to be grouped together, and different coolers to be separated. Each run is placed in a unique folder with the data and time the run began. If your purpose is to test multiple configurations, this variable would be the best one to identify the configurations in because of its presence in the directory path.
+
+By the way, it is not an accident that there are multiple tabs within the \textbf{INPUT} function. Though not really necessary or important, I like having the text for these functions at the same indent level just for readability of the script. Not every function is on the same level, but those that are somewhat related are, such as the three CPU variables now covered (\textbf{CPUname}, \textbf{BRAND}, and \textbf{COOLERname}).
+
+\subsection{OPTIONS Printing}
+\begin{stylePy}
+print("Available Tests (3DMark requires Professional Edition):")
+for OPT in OPTIONS:
+	print(OPT)
+TESTcode	=	INPUT(OPTIONS[0][0:3],	"Test ID Number (default !DEF!): ")
+TESTfunc(TESTcode)
+\end{stylePy}
+
+Despite this only being five lines, there is a lot going on. The first three lines are fairly simple as all are concerned with printing information in the console window for the user. The top line identifies that what follows are the available tests, and that the Professional Edition of 3DMark is necessary for it to work with the scripts.
+
+After printing that line a \textbf{for} loop goes through each line in the \textbf{OPTIONS} list made earlier to print the contents. By checking for the presence of shortcuts when building \textbf{OPTIONS}, only those tests the script can launch will be shown.
+
+The next line creates the \textbf{TESTcode} variable and assigns to it the code number for the desired test using \textbf{INPUT}. I decided to get a little fancy with this though, giving it the ability to react to what tests are available, with regard to the default number. It does this by reading the first three characters of the first line of \textbf{OPTIONS}. This is why the two lines of text in the \textbf{opt3DMark} list are at the end of the list, just in case that is ever the first element in \textbf{OPTIONS}. Selecting those characters involves first selecting the first element in the list, using 0 in the square brackets, and then the 3 characters starting at character 0, which is indicated with the two numbers separated by the colon.
+
+The last line passes \textbf{TESTcode} to \textbf{TESTfunc} so the desired test function is assigned to the \textbf{TEST} variable. This all but removes the need to specifically identify the test for the remainder of the script.
+
+\subsection{duration and warm Lengths}
+\begin{stylePy}
+duration	=	int(INPUT(duration,	"Duration (default !DEF! s) : "))
+warm		=	int(INPUT(warm,		"Warmup Duration (default !DEF! s) : "))
+length		=	int((1 + coolCOEF)*duration + warm + 1)
+\end{stylePy}
+
+Nothing too complicated here with these three lines as the first two ask the user for how long certain periods should be. I need these to be integer values rather than strings, which is why the \textbf{int} function is used. The default values of \textbf{duration} and \textbf{warm} were set earlier in the script. The third line then gets the total length the script should run by simple arithmetic and adds 1 second to the length. This extra second is to ensure GPU-z is closed and no longer editing its log file before the script tries to move it to the data folder.
+
+\subsection{pulse Length}
+\begin{stylePy}
+if TESTcode[2] == "1" and TESTcode[0] != "9":
+	pulse	=	int(INPUT(pulse,	"Wait Between Runs (default !DEF! s) : "))
+\end{stylePy}
+
+This code is to check if a pulsed test was selected, and if it was then a \textbf{pulse} value will be requested from the user, though there is also a default value. If a 3DMark test was selected, the check will not pass as those already pulse and the script is not configured to allow for further manipulation of that. Technically it could be enabled though, as I have done this in the GPU Thermal scripts where the \textbf{pulse} time is added to the loading time I have no control over. However, because the loading times for the Cinebench tests and Prime95 are so appreciably less than 3DMark, I would recommend using those when experimenting with pulsing lengths.
+
+\subsection{GPU-Z Sensor Log.txt Check}
+\begin{stylePy}
+if os.path.exists(scriptPath + "GPU-Z Sensor Log.txt"):
+	print("")
+	DEL	=	INPUT("Y", "Old GPU-Z Sensor Log.txt found. Should it be deleted?\nY/n (Y): ")
+	if DEL	==	"Y" or DEL == "y":
+		os.remove(scriptPath + "GPU-Z Sensor Log.txt")
+\end{stylePy}
+
+This is a more important block of code than you may realize at first because if something crashes, either the script or the computer, it is very possible the GPU-z log file will remain. This will prove an issue the next time the script is run, as GPU-z will just pick up writing to the file and it will take manually removing the old data to have just what you want. To address this problem, my solution is to check if the file exists in the script's folder, and if it does to have the script remove it, unless the user wishes to keep it. I am not sure why the user may want to keep the file, but if nothing else the wait for input allows the user time to manipulate the file, such as moving it somewhere else so a fresh one is made.
+
+\subsection{dataPath Building}
+\begin{stylePy}
+TIME	=	time.strftime("%Y-%m-%d %H.%M", time.localtime())
+
+if COOLERname == "":
+	COOLERfold	=	""
+else:
+	COOLERfold	= 	COOLERname + "\\"
+
+if os.path.exists(scriptPath + "GPU Thermal.py"):
+	dataPath	=	scriptPath + "Data CPU\\" + 	COOLERfold + TIME + "\\"
+else:
+	dataPath	=	scriptPath + "Data\\" + 		COOLERfold + TIME + "\\"
+\end{stylePy}
+
+Though not obviously linked, I have these blocks of code together because they all relate to the following code block that makes the directory for the data to be stored in.
+
+First the \textbf{TIME} variable is created and is to hold the current time in the formatting I have specified; YYYY-MM-DD HH.mm. This format is acceptable for a file name and the order of significance is decreasing from left to right, so Windows' normal sorting will work from oldest to newest. The \textbf{time.localtime} function will, by default, use the current time.
+
+The next block checks if a \textbf{COOLERname} value exists, and if it does then the \textbf{COOLERfold} variable will be that value with a back-slash at the end. This is so the cooler name can be used as a folder name. If \textbf{COOLERname} is an empty string then \textbf{COOLERfold} will also be an empty string and not impact the creation of the data folder.
+
+The last block of code does a couple things, with the first being a check for if the "GPU Thermal - 3dmdef.py" script is present in the same folder as this script. If it is, then the data this script produces will be under a "Data CPU" folder, so the CPU and GPU data is kept separated. If it is not present, then the data will simply be under a "Data" folder. (The "GPU Thermal - 3dmdef.py" script has a similar check and will use a "Data GPU" folder if this script is present.) The \textbf{os.path.exists} function is a fairly useful one as it can determine if a folder or file exists at the specified location, and then returns the appropriate Boolean.
+
+For any wondering, "GPU Thermal - 3dmdef.py" was initially an experimental variant of "GPU Thermal.py" but quickly became the focus of that project. It creates custom 3DMark definition files when appropriate, hence the name, making it more powerful than the original.
+
+The second thing this code does build out the \textbf{dataPath} variable, which is a string pointing to the folder the data will ultimately be stored in, under the \textbf{scriptPath} folder.
+
+\subsection{dataPath Creation}
+\begin{stylePy}
+if not os.path.exists(dataPath):
+	os.makedirs(dataPath)
+\end{stylePy}
+
+Technically the \textbf{if} statement is unnecessary here as the \textbf{TIME} value will always be different, but in any case, this code checks if the \textbf{dataPath} folder exists before making it with \textbf{os.makedirs}. It is important to note the function is \textbf{os.makedirs} and not \textbf{os.mkdir}. The difference is the former will create the necessary tree of folders for the provided path while the latter creates a single folder.
+
+\subsection{Launching Monitoring Software}
+\begin{stylePy}
+if BRAND == "Intel":
+	os.system("start " + lnkPowerGadget + " -resolution 1000 -duration " + str(length) + " -file \"" + dataPath + "Intel-CPU Profile.csv\"")
+
+if BRAND == "AMD":
+	GPUz	=	subprocess.Popen(lnkGPUz + " -minimized", shell=True)
+	os.system("start " + lnkAMDuProf + " timechart --event energy --event frequency --interval 1000 --duration " + str(length) + " -o \"" + dataPath + "AMD-CPU Profile\"")
+#	start is necessary or else Python will wait until uPROF finishes before continuing
+\end{stylePy}
+
+These two blocks of code check the value of \textbf{BRAND} and then launch the appropriate monitoring software with \textbf{os.system}. Intel processors only need Power Gadget to be launched and certain arguments can be passed to it. The first of these I use is the "resolution" which is the sampling resolution for the measurements in milliseconds. I use 1000, so one measurement per second, to match the resolution of GPU-z and thus the AMD data, ensuring script compatibility, though it might not really matter. The second argument I use is "duration" and allows one to tell Power Gadget how long it should collect data, which is handy as the program will close itself at the appropriate time. The third and quite useful argument is "file" that allows the user to specify where the output CSV should be saved, as well as its name. The \textbf{dataPath} variable is used to stick the file where it will need to go and the file is named "Intel-CPU Profile.csv," which matches the format of the filename from AMD μProf. I find consistent naming helpful, especially when trying to have similar processes for separate things.
+
+Something I skipped over is that in the \textbf{os.system} command I start the string with "start," but this is important. This will cause the program, whether it is Power Gadget or μProf, to be launched in a separate window. Without this Python will actually wait for these applications to close before continuing, which is not acceptable.
+
+For anyone wondering exactly why I am using \textbf{os.system} rather than a \textbf{subprocess} function, I do not clearly remember. I am certain I experimented with it though, and found it to not work as desired.
+
+Entering the AMD block we see that first GPU-z is launched using \textbf{subprocess.Popen}. This function, \textbf{subprocess.Popen} does not block Python from continuing with the script and so is desired here. By using \textbf{subprocess} the \textbf{GPUz} object can be terminated by Python, as the program will not know to terminate at the desired time otherwise. The "minimized" argument is passed to GPU-z so it effectively only opens in the task bar.
+
+Next we have \textbf{os.system} used to launch AMD μProf with its list of arguments. Many of these are similar to ones for Power Gadget, such as "interval" that maps to "resolution" and "duration" that is common between them. The "o" argument is to set the output location, like the "file" argument for Power Gadget. The difference is the "timechart" and the two "event" arguments. These tell μProf how it should run and what data it should collect, as the software can actually collect many kinds of data for different purposes. For the purpose of this script I want "timechart" which will collect the desired data and save it to a CSV. The "event" arguments specify the data I want recorded, and this differs between the two versions of AMD μProf I have worked with. For the older version the arguments were "energy" and "frequency," which will be per socket and per core for energy and frequency per thread. For the newer version, however, the arguments are "Power,Frequency,Temperature,P-State" and they will capture the power, not energy, frequency, temperature, and P-states for the threads. The P-state information is actually not that useful, having looked at it, but it does not hurt to record just the same. The change from power to energy is more significant but is only an issue when we get to the R scripts.
+
+Assuming you install the newest version of AMD μProf, this second, active line should do the trick, but if you are using an older version you might find the commented-out line is necessary. By the way, if you pass the AMDuProfCLI executable the arguments "timechart --list" it will tell you what measurements it can record on the system, which you may find useful if experimenting with the software.
+
+\subsection{Warm-up Period}
+\begin{stylePy}
+print("\nWarm-up\tEnds at " + timeFUT(warm))
+time.sleep(warm)
+\end{stylePy}
+
+So the user knows how the script is progressing, I have it set to print the current period, but also when the period will end using the \textbf{timeFUT} function I covered earlier. The amount of time into the future this period will end is the value of \textbf{warm}, so that is the function's argument.
+
+After identifying the current period as "Warm-up," the \textbf{time.sleep} function is used to have the script wait the selected length of time before continuing to the next step, which is the "CPU Load" period, or test period as I usually refer to it.
+
+\subsection{CPU Load Period}
+\begin{stylePy}
+print("\nCPU Load\tEnds at " + timeFUT(duration) ")
+
+if TESTcode[2] == "0" or TESTcode[0] == "9":
+	pulse	=	"NULL"
+	Bench	=	subprocess.Popen(TEST(TESTcode), shell = True)	
+	time.sleep(duration)
+	
+	kill(Bench.pid)
+	Bench.kill()
+	
+if TESTcode[2] == "1" and TESTcode[0] != "9":
+	# PULSE(TEST)
+	PULSEx(TEST)
+\end{stylePy}
+
+By checking the \textbf{TESTcode} characters, the script knows whether the test will be run constantly or pulse on and off. The 3DMark tests all pulse though, and that is indicated in their code numbers, but are executed as though they are constant, which is why there are conditions to identify them and run the test as is appropriate. I already covered the \textbf{PULSE} and \textbf{PULSEx} functions, so I will just go straight into the code for running the constant tests. (Note the call to the \textbf{PULSE} function is commented out, and so will not be run, but for the record of it, I am leaving it here.)
+
+The first step is changing the value of \textbf{pulse} from a number to "NULL," a special word for R indicating there is no value. The value of \textbf{pulse} will be written into the appropriate R script, but if no value is appropriate for the variable, such as when the test is constantly run, then "NULL" is appropriate. 
+
+The second step is launching the test, which is done with \textbf{subprocess.Popen} and assigned to the object \textbf{Bench}. As that also launches the test, all that remains is to run \textbf{time.sleep} with the \textbf{duration} value. The script will wait for the length of the test period, after which it will kill the test using both the \textbf{kill} function and \textbf{Bench.kill}. As I mentioned earlier, sometimes Python is not always able to kill a subprocess, which is why I have both methods here. Something curious, but fortunate is this does not throw an error, as Python will if it tries to kill a process that no longer exists. I guess the \textbf{kill} function takes just long enough that \textbf{Bench.kill} can be run without errors, and does not itself throw an error from any interference.
+
+\subsection{Cooldown Period}
+\begin{stylePy}
+print("\nCooldown\tEnds at " + timeFUT(duration * coolCOEF)) ")
+time.sleep(duration * coolCOEF)
+\end{stylePy}
+
+Once the test period has finished, the Cooldown period begins so that is printed to the console, along with when it ends, and \textbf{time.sleep} is used to have Python wait the appropriate length of time.
+
+\subsection{GPU-Z Sensor Log.txt Management}
+\begin{stylePy}
+if BRAND == "AMD":
+	kill(GPUz.pid)
+#	GPUz.kill() doesn't work because subprocess with shell=True makes it a separate process that cannot be controlled by Python
+	time.sleep(1)
+#	give enough time for GPUz to be killed before trying to move the file
+	if os.path.exists(scriptPath + "GPU-Z Sensor Log.txt"):
+		shutil.move(scriptPath + "GPU-Z Sensor Log.txt", dataPath + "GPU-Z Sensor Log.txt")
+	else:
+		DESKTOP	=	"\\".join(scriptPath.split("\\", 3)[:3]) + "\\Desktop\\"
+		if os.path.exists(DESKTOP + "GPU-Z Sensor Log.txt"):
+			shutil.move(DESKTOP + "GPU-Z Sensor Log.txt", dataPath + "GPU-Z Sensor Log.txt")
+\end{stylePy}
+
+This entire block of code is just for managing the GPU-z log file, which is why it is behind a check of \textbf{BRAND}, being only relevant for use with AMD processors. It starts by killing \textbf{GPUz} and then it waits a single second because the application does not shut down immediately. As you can see I use the \textbf{kill} function I wrote because using the \textbf{shell} argument when launching it apparently makes it impossible for Python to terminate it that way, or it otherwise is unable to do so.
+
+Once that pause is over, the script checks for the presence of the file in the script folder, and moves it to the data folder. If it does not find the file in the script folder, it attempts to check the desktop for it, but as I said much earlier, the means of finding the desktop I do not consider robust enough to be reliable. Truly GPU-z should be configured to save its log file in the script folder, even though I have not removed all of the code concerned with the file being on the desktop.
+
+To move the file the \textbf{shutil.move} function is used, which takes the path to the file as the first argument, and then the path to the destination as the second argument. There are other means of moving files with Python, but the \textit{shutil} functions are a bit more obvious in their workings.
+
+\subsection{@CPU Thermal - Input Creation}
+\begin{stylePy}
+if not os.path.exists(dataPath + "@CPU Thermal - Input.r"):
+	with open(scriptPath + "CPU Thermal - Input.r", 'r') as fref, open(dataPath + "@CPU Thermal - Input.r", 'w') as fout:
+		for line in fref:
+			fout.write(line	\
+				.replace("!TEST!",		TESTname)		\
+				.replace("!CPU!",		CPUname)		\
+				.replace("!COOLER!",	COOLERname)		\
+				.replace("!DUR!",		str(duration))	\
+				.replace("!WARM!",		str(warm))		\
+				.replace("!PATH!",		dataPath.replace("\\", "/"))	\
+				.replace("!MULTI!",		MULTI)	\
+				.replace("!PULSE!",		str(pulse))	\
+			)
+		fout.close()
+\end{stylePy}
+
+If you have ever looked at the scripts I wrote for processing frame time data, this will be very familiar as this is how I create R scripts for each run, based on a reference version. First a check is made that the R script is not already present, which should be unnecessary as the data will always be in a new folder, but it is still a good check to have.
+
+The next step is to use the \textbf{with...open...as} statement to open files as objects for Python to manipulate. First it opens the reference file, found in the same folder as the script and named "CPU Thermal – Input.r." The 'r' argument indicates that this interaction is read-only, so the reference file will not be altered. This reference file is then assigned to the object \textbf{fref}. Following a comma we have another \textbf{open} command, but it is actually pointing to a file that does not exist yet, "@CPU Thermal – Input.r" with \textbf{dataPath}. I use special symbols at the front of the filename to protect the files from errant copying and pasting, but also to help with sorting order. Though the file does not exist yet, the 'w' argument means Python will be able to write to it and this is assigned to the object \textbf{fout}.
+
+The next block of code is a \textbf{for} loop that will go through each line of the \textbf{fref} object. The body of the loop then is to write each line to \textbf{fout}, but after the line has had string replacement commands run on them. There are several pieces of information Python needs to place into the output files and I mark their locations in the reference file with some name surrounded by exclamation points. For example, "!TEST!" is for the name of the test run, which is this script's \textbf{TESTname} variable. The back-slashes I am using to escape the line breaks, which I feel helps with the readability of this code by placing each \textbf{replace} command on its own line.
+
+The \textbf{duration} and \textbf{warm} values do need to be converted from integers to strings, thus the \textbf{str} functions surrounding them. Also I want the path to the data in the R script, though depending on how the script is run it is not necessary, but R has a quirk with paths. Rather than using the back-slash to separate folders in a path, it needs the forward-slash, and so I apply the \textbf{replace} function to convert the Python-formatted \textbf{dataPath} to the R-format.
+
+The replacing of "!PULSE!" is an addition I have made very recently as I realized I do need this information at least stored somewhere for later reference. If the test was pulsed, then this variable needs to be converted to a string to work with \textbf{replace} properly. If it was not pulsed, then the value is already the string "NULL" and no harm will be done.
+
+Outside the \textbf{for} loop the \textbf{fout} object is closed using the appropriately named \textbf{close} command.
+
+\subsection{\til CPU Thermal - Data Creation}
+\begin{stylePy}
+if BRAND == "AMD":
+	if not os.path.exists(dataPath + "~CPU Thermal - Data - AMD.r"):
+		shutil.copyfile(scriptPath + "CPU Thermal - Data - AMD.r",		dataPath + "~CPU Thermal - Data - AMD.r")
+elif BRAND == "Intel":
+	if not os.path.exists(dataPath + "~CPU Thermal - Data - Intel.r"):
+		shutil.copyfile(scriptPath + "CPU Thermal - Data - Intel.r",	dataPath + "~CPU Thermal - Data - Intel.r")
+\end{stylePy}
+
+I like a modular design to my scripts, which is why many of my processes with R have separate Input and Output files, making it possible for new Output files to be dropped in without issue. Everything unique to the data, such as the test name and configuration, are kept in the Input file, which normally also manages importing the data, but that is not going to work so well here. The raw data for AMD and Intel CPUs is going to have substantially different formatting and structure because different software is used between the two brands. To address that I have Data scripts for both brands that handle converting the data into a common format for the Output script.
+
+These Data scripts should only need to be run once, as they save the formatted data that the Input script checks for. If the formatted data is not present, the Input script runs the appropriate Data script, but if the formatted data file is found then it is simply imported and the script moves along.
+
+The reason the "\til" symbol is used rather than "@" is because I want these Data scripts placed after the Input and Output scripts, and that is the sorting order for these symbols. The Data scripts are less important as they should only be run once and there should be no need to edit them, hence why I want them lower in the visible order.
+
+\subsection{@CPU Thermal - Output Creation}
+\begin{stylePy}
+if not os.path.exists(dataPath + "@CPU Thermal - Output.r"):
+	shutil.copyfile(scriptPath + "CPU Thermal - Output.r", dataPath + "@CPU Thermal - Output.r")
+\end{stylePy}
+Ending this Python script is these couple of lines, checking for the presence of the Output script in the data folder, and then placing it there, with the "@" symbol, if necessary.
+
+That wraps up this script and so we can get to the next script, "CPU Thermal – Input.r" that is the only other script that needs to be run directly, as it manages the other R scripts.

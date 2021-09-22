@@ -1,0 +1,125 @@
+\section{Scripting: CPU Thermal - Input.r}
+Time to cover the R scripts and first up is the "CPU Thermal – Input.r" script. For quite some time now I have been employing a modular design for my R scripts, with separate Input and Output scripts. The idea is to have every configuration item, such as the name of the test, set in the Input script and the Output script do much if not all of the data processing and actual writing of output files. This means I can freely experiment with the Output script and then replace old versions and still have everything work correctly. Of course that does assume I have not made any tweaks to the configuration information, which is not always the case, but usually this will work.
+
+This modular design also means the Input script is the only one that can be run directly, as it is the only one with the information to properly find the data. Technically the Data scripts I will get to later are also responsible for importing data, but lack some information contained in this script. It might be worth noting as well that when one script opens another the same environment is used, which means all variables, custom functions, etc. are shared between them.
+
+\subsection{R Library Loading}
+\begin{styleR}
+library(readr)
+library(tidyr)
+library(ggplot2)
+\end{styleR}
+
+Both Python and R are modular in their design, enabling additional packages to be created and loaded by the user, and as is my preference, I have most of these additional libraries loaded at the top of the first script. There is a singular exception and that is a library for working with HTML that is in the Output script, next to where it is needed.
+
+These three libraries are all from Tidyverse and provide valuable functions. The top one is \textit{readr} and it handles both importing the data from files and formatting it into data frames, as well as exporting data frames to files. Data frames are an object in R that many would liken to tables, in that they are rectangular with data being held in rows and columns, and each column can be its own data type. (Technically \textit{readr} actually brings the data in as a tibble, which are a special form of data frame used across Tidyverse libraries.)
+
+Something very useful with \textit{readr} is its ability to work with compressed files, so it can not only read in compressed files, such as compressed CSVs, but also write to compressed files. I enjoy this capability as a means to reduce space and to protect the data files from accidental edits.
+
+The \textit{tidyr} library provides some rather useful functions for manipulating data, as we will see in the Data scripts. Primarily I use the function that will convert columns to rows, with appropriate labels, which helps with plotting some data in \textit{ggplot2}. That is almost certainly the library I use the most as I find it a very convenient and powerful way to design and export graphs.
+
+\subsection{Data Configuration Information}
+\begin{styleR}
+duration	=	!DUR!
+warm		=	!WARM!
+TESTname	=	"!TEST!"
+MULTI		=	!MULTI!
+CPUname		=	"!CPU!"
+COOLERname	=	"!COOLER!"
+PULSE		=	!PULSE!
+\end{styleR}
+
+As I said before, I like placing the configuration information in the Input script, and here is most of it. The words surrounded by exclamation points will be replaced by the Python script I already covered. You may notice some of these are also surrounded by quotes, and that is the make sure the values are considered strings by R, while the others can be interpreted as they are. The \textbf{duration} and \textbf{warm} variables will both store numbers while \textbf{MULTI} will store a logical or Boolean, indicating if the test was or was not multi-threaded. The \textbf{PULSE} variable will either store a number of "NULL," a special word in R for no value. I think it might technically be considered a kind of logical value, but in any case it is very helpful because many functions understand to ignore "NULL" and it is easy to write that it should be ignored.
+
+I do not think it is necessary to explain the purpose of most of these variables because of their suggestive names but also because they align with naming in the Python script.
+
+\subsection{Period Factor Levels}
+\begin{styleR}
+levsPER		=	c("Warm-up", TESTname, "Cooldown")
+\end{styleR}
+
+The \textbf{levsPER} name stands for "period levels" and is necessary to make sure R understands the order of the periods. One of the data classes in R is factor and what it will do is map a list of discrete values, such as the data periods, to integers with levels storing that mapping. If the order of these levels is not manually set, R will assume it is to be alphabetical, which would place the Cooldown period ahead of the Warm-up period, and the test period somewhere. Despite its importance, we will actually not use this much simply because the order need only be applied to the data once.
+
+I should mention another data class is vector and it is easily created with the \textbf{c} function here, where the comma separated values are the elements of the vector. Vectors are akin to lists, but the list class is quite different from the vector class.
+
+\subsection{Graph Configuration}
+\begin{styleR}
+theme_set(theme_grey(base_size = 16))
+DPI			=	120
+ggdevice	=	"png"
+
+gWIDTH	=	16
+gHEIGH	=	9
+app.BREAK	=	TRUE
+FREQ.COEF	=	NULL	#	Output.r will automatically set this based on maximum power and clock values
+FREQspec	=	NULL	#	for frequency specifications, can take vector
+\end{styleR}
+
+Each of these variables is concerned with the creation of the graphs. The first changes the default text size for the graphs to 16, making it easier to read by using the \textbf{theme\_set} function of \textit{ggplot2}. The second is the DPI of the image output, hence the name, and the third sets that the output should be PNG files. I also have it configured so PDFs can be exported instead or in addition to this image format, but I rarely find a need to use PDFs. R refers to the exporters as devices, and as it is \textit{ggplot2} handling the graphs I named the variable \textbf{ggdevice}.
+
+The next two variables, \textbf{gWIDTH} and \textbf{gHEIGH} set the width and height of the exported graphs in general, but I do have some use dynamic heights, based on the content. The \textbf{app.BREAK} variable controls whether to apply line breaks to labels on the horizontal axis of the graphs, and the answer will almost always be yes, so this is set to "TRUE." Amusingly it was not long after I wrote some mildly complicated functions to achieve the breaking as I wish that I learned Tidyverse and come up with its own solution that all but made my effort pointless. However, I do have one special capability that solution lacks, and that is the ability to ensure a line break is not applied to the 0.
+
+The \textbf{FREQ.COEF} variable is an interesting and very important value. Some of the graphs plot many measurement types together, and while some can comfortably share a scale, the frequency cannot. The solution then is to use a secondary axis and apply a coefficient that will scale the frequency data to fit within the range of the power and temperature data. If this variable is set to "NULL" here, then code in the Output.r script will derive a value from the maximum power and frequency values, but in case what it calculates is undesirable, you may wish to set the value here.
+
+The \textbf{FREQspec} variable is a relatively new addition to these scripts and is for storing frequency specification information for the CPU, as in the base and boost clocks. If it is given values besides NULL, such as 3700 and 4300, the base and boost clocks for the Ryzen 7 2700X, then lines will be drawn on one of the graphs marking these values and information on how much data is below and between these frequencies will be written into the TXT output.
+
+\subsection{Setting Working Directory}
+\begin{styleR}
+if (interactive())	{
+	setwd("!PATH!")
+}	else	{
+	pdf(NULL)
+}
+\end{styleR}
+
+These five lines of code are more important than their length suggests, especially if you need or wish to experiment with the script. There are two ways to execute an R script without using some special IDE. One is to run it through the R GUI, which is what you will likely do when experimenting with the script, such as designing a new graph. The other is to execute the script directly, so it is run by the Rscript executable, which is how I run the scripts through to completion. There are key advantages and disadvantages to both methods with these five lines addressing them.
+
+First was have the \textit{if...else} statement running the \textbf{interactive} function, which returns \textit{TRUE} if we are in the GUI and \textit{FALSE} if the script is being run directly. When the script is run directly, the working directory is assumed to be the one the script is in, so finding the data files in the same folder is almost trivial. The working directory for the GUI, however, is its home, making it necessary to change it with the \textbf{setwd} function. The "!PATH!" term will be replaced by the Python script with the appropriate string, solving that issue. The issue with running the script directly is it may create a PDF of an empty image, but that is prevented with the \textbf{pdf(NULL)} line. What this does is open the PDF device for R with the \textit{NULL} value, so the undesired file will not be created. A quick test suggests this is not necessary any longer, but it does no harm to keep this code and it was once an issue that can still exist, depending on the age of the R installation and libraries.
+
+While setting the working directory does solve the problem of running the code in the R GUI by copying and pasting it in, there is a catch that I should address as it is relevant for me, and potentially others. I have been collecting all of this thermal data on my test system, and so that is where the data is first saved and it is its folder structure that working directory path applies to. I do not have R on my test system though, but on my desktop with a different folder structure, making it necessary to change this written-out path if I wish to run the code through the GUI on the other machine. It is not a difficult change to make, duplicating the line, pasting in the correct path that you can get by right-clicking on the path in Explorer, and changing the back-slashes to forward slashes, but it is something that needs to be done when going between different systems. Such effort is unnecessary when executing the script directly though, as it assumes the working directory to be that of the script.
+
+\subsection{Data Importing}
+\begin{styleR}
+if (!file.exists("Combined.csv.bz2"))	{
+	# if	(grepl("AMD", CPUname))		source("~CPU Thermal - Data - AMD.r")
+	# if	(grepl("Intel", CPUname))	source("~CPU Thermal - Data - Intel.r")
+	if	(file.exists("~CPU Thermal - Data - AMD.r"))		source("~CPU Thermal - Data - AMD.r")
+	if	(file.exists("~CPU Thermal - Data - Intel.r"))		source("~CPU Thermal - Data - Intel.r")
+}	else	{
+	dataALL	=	read_csv("Combined.csv.bz2")
+}
+\end{styleR}
+
+Ever since I learned \textit{readr} could work with compressed files, I have adopted a feature like this in my scripts. It will first check if the compressed file exists, and if it does not the code to create the file will be run. If it is found though, the data is read in and we can move on. The \textbf{file.exists} function does exactly what its name suggests but I am also using the \textit{!} character to reverse the logical or Boolean value. The exclamation point is used like that in many if not all computer languages and technically it is not necessary here, as I could just flip the code blocks around the \textit{else} part of the statement. For whatever unimportant reason though, I prefer to have the more complicated code at the top, so I invert the check.
+
+As you can see I have four lines of code in block for if the check returns "TRUE", with two of them commented out. They remain just because they are how I did this before and do not feel like removing that history. Either way, within this block it is necessary to determine which Data script to run, as there is one for AMD and one for Intel CPUs. Previously I checked if either brand name is within the \textbf{CPUname} value, but as I have now set the Python script to not require it be there, I needed to make a change. I could have added another variable that Python could set the value of in this script, but by using \textbf{file.exists} again, R can check what Python was told. The Python script only places the appropriate Data script into the data folder, based on what it is told the brand is, so R need simply check which file is present and then execute that one. It may be possible to have R scan for the Data script in the folder, but I see little need to so complicate the code when this will suffice.
+
+After checking if the Data script is present, R will run it using the \textbf{source} function, which will read in the file it is directed to and parse its contents. This is the function that allows me to make these R scripts modular. The result will be to both have the data accessible to R, with proper formatting, and to save it all into the "Combined.csv.bz2" file, a CSV compressed using bzip2, which I have found to be optimal for frame time data and works very well for this thermal data as well.
+
+In the body for the \textit{else} block, the "Combined.csv.bz2" file is read in using \textit{readr}'s \textbf{read\_csv} function and then stored as \textbf{dataALL}.
+
+\subsection{Data Formatting}
+\begin{styleR}
+dataALL$Thread	=	ordered(dataALL$Thread)
+dataALL$Core	=	ordered(dataALL$Core)
+dataALL$Socket	=	ordered(dataALL$Socket)
+dataALL$Period	=	ordered(dataALL$Period, levels = levsPER)
+dataALL$CPU		=	ordered(dataALL$CPU)
+dataALL$Cooler	=	ordered(dataALL$Cooler)
+dataALL$Test	=	ordered(dataALL$Test)
+\end{styleR}
+
+This block of code is to address the situation of \textbf{dataALL} being created from reading in "Combined.csv.bz2," as the desired data classes might not be applied to various columns. Selecting the columns is quite easy with the "\$" symbol, though this does also demonstrate the importance of the column names not containing spaces, as then they will not be properly selected.
+
+As I mentioned earlier, the factor data type is for discrete data, for example the core number because there are only so many cores with specific names. Months of the year would be another example of a discrete data type. Specifying they are ordered factors has an obvious meaning.
+
+The "Thread," "Core," and "Socket" values are all going to be integers starting at 0, making it only necessary to tell R they should be ordered as it will assume the order is increasing from 0, or alphabetical if these were strings. As I also explained earlier, the "Period" column must have the order for its levels specified, which is achieved with the \textbf{levels} argument here, and passing it the \textbf{levsPER} vector created earlier.
+
+The last three columns, "CPU," "Cooler," and "Test" may seem unnecessary, as the \textbf{CPUname}, \textbf{COOLERname}, and \textbf{TESTname} variables contain the same information, but there is a reason for them. By encoding this information into the "Combined.csv.bz2" file, it will be possible to extract the information from there if it is ever lost. Also, if scripts are ever written to bring in data from multiple configurations, such as different tests or different CPUs, then this will be necessary to correctly identify the data. It is true these do not necessarily need to be ordered factors, but I like the visual consistency.
+
+\subsection{Data Processing}
+\begin{styleR}
+source("@CPU Thermal - Output.r")
+\end{styleR}
+
+The last step of this script is to run the Output script, using the \textbf{source} function I described earlier. With that, we can get to the next script, for processing AMD-CPU data.

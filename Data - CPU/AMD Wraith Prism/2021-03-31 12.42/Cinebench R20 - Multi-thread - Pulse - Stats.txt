@@ -1,0 +1,76 @@
+Cinebench R20 - Multi-thread - Pulse
+AMD Ryzen 7 2700X Eight-Core Processor
+AMD Wraith Prism
+Pulse pause length, in addition to loading:	5 s
+
+Ignore negative Uncore Energy
+
+Warm-up Period
+  Period        Measurement      Min   Median     Mean      Max
+ Warm-up      CPU Temp (°C)    30.10    31.80    36.01    55.00
+ Warm-up    Frequency (MHz)  2426.17  2720.94  2952.05  4319.48
+ Warm-up Socket Energy (mJ) 12351.55 16365.08 20808.11 73694.13
+ Warm-up   Core Energy (mJ)    15.59    73.54   585.89 14197.97
+ Warm-up Uncore Energy (mJ) 12083.87 15312.10 16121.02 29164.49
+
+Cinebench R20 - Multi-thread - Pulse Period
+                               Period        Measurement       Min    Median      Mean       Max
+ Cinebench R20 - Multi-thread - Pulse      CPU Temp (°C)     51.00     84.60     83.22     93.50
+ Cinebench R20 - Multi-thread - Pulse    Frequency (MHz)   2406.35   3888.15   3808.28   4254.01
+ Cinebench R20 - Multi-thread - Pulse Socket Energy (mJ)  12098.86 133709.44 119371.73 166260.22
+ Cinebench R20 - Multi-thread - Pulse   Core Energy (mJ)     18.54  13362.28  11792.34  17808.91
+ Cinebench R20 - Multi-thread - Pulse Uncore Energy (mJ) -73446.40  26705.05  25033.04 100149.37
+
+Frequency Percentages
+<3700 MHz =3700 MHz <4300 MHz 
+      8.7       0.0     100.0 
+
+Linear Model Slopes:
+                CPU_Temp   Frequency Socket_Power   Core_Power
+Test Period 0.0002690654 -0.01980738 -0.001735723 -0.000332525
+1% to 11%   0.0069288463 -0.18275781  0.032288406 -0.004275859
+89% to 99%  0.0054938286  0.13659269  0.025981143  0.003650386
+
+Linear Model Slopes (minute):
+              CPU_Temp  Frequency Socket_Power Core_Power
+Test Period 0.01614392  -1.188443   -0.1041434 -0.0199515
+1% to 11%   0.41573078 -10.965468    1.9373043 -0.2565515
+89% to 99%  0.32962972   8.195561    1.5588686  0.2190232
+
+First Quartile Temperature Reached
+84.5 °C
+
+ Time CPU_Temp CPU_Temp_Diff
+  123     84.5           0.1
+  124     84.6           0.0
+  125     84.6           0.0
+  126     84.6           0.0
+  127     84.6           0.0
+  128     84.6           0.0
+  129     84.6           0.0
+  130     84.6           0.0
+  131     84.6           0.0
+  132     84.6           0.0
+
+Cooldown Period
+   Period        Measurement       Min   Median     Mean      Max
+ Cooldown      CPU Temp (°C)     31.00    32.50    33.62    75.80
+ Cooldown    Frequency (MHz)   2402.93  2512.79  2633.69  4257.44
+ Cooldown Socket Energy (mJ)  11785.45 13769.53 14239.29 33213.16
+ Cooldown   Core Energy (mJ)     13.00    37.08    74.74 13984.07
+ Cooldown Uncore Energy (mJ) -71637.41 13301.87 13641.35 30347.89
+
+Third Quartile Temperature Reached
+33.4 °C
+
+ Time CPU_Temp CPU_Temp_Diff dTime
+ 4326     33.4           0.0   726
+ 4327     33.4           0.0   727
+ 4328     33.4           0.0   728
+ 4329     33.4           0.0   729
+ 4330     33.4          -0.1   730
+ 4331     33.3           0.0   731
+ 4332     33.3           0.0   732
+ 4333     33.3           0.0   733
+ 4334     33.3           0.0   734
+ 4335     33.3           0.0   735

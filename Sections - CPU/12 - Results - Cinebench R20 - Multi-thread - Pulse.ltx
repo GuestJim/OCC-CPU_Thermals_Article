@@ -1,0 +1,66 @@
+\section{Results - Cinebench R20 - Multi-thread - Pulse:}
+
+With the Prime95 results covered, I can get to the other prominent change I have made to the script during this overhaul; superior test pulsing support. The change enables the script to kill the test at the appropriate time, rather than having to wait for the last run to complete. In practice this can be applied to Cinebench R20 and Cinebench R23, but I have decided to use the older version of the benchmark, so it can be compared to the non-pulsing results I have recorded previously. Of course it has been months since those previous recordings, so the results are not perfectly comparable, but better than if the other benchmark were used.
+
+I collected data with both the multi-threaded and single-threaded version of Cinebench R20, and am starting with the multithreaded data. The pulse length is 5 seconds, I believe. Unfortunately I neglected to record that information at the time, but that is the default length in the "CPU Thermal.py" script and the data also supports this. Socket Power and frequency will both fall very quickly, almost instantly during an idle period, and when examining the power data I saw periods of five seconds at idle levels. These are surrounded by measurements of elevated but not maximum power usage, likely from the previous test finishing and Cinebench R20 waiting for the next test. Precision Boost Overdrive is active for both of these tests because that is how I normally run the test system, and it is the interaction between the pulsing and boost algorithms that will make this more interesting. By having the load pulse on and off, the boost budgets can have some time to recharge. Though I am not sharing the results here, I did some experiments with ten minute runs and it appeared a pause of 10 seconds between each pulse was just enough to recharge the boost between runs. The trend to the peaks was decreasing, but not much.
+
+\vspace{1.0ex}	\noindent	\resizebox{\columnwidth}{!}{
+\begin{tabular}{| l | l | l | l | l | l | }
+	Period	&	Measurement	&	Min	&	Median	&	Mean	&	Max	\\	\hline\hline
+	Warm-up	&	CPU Temp (°C)	&	30.1	&	31.8	&	36.01	&	55	\\	\hline
+	Warm-up	&	Frequency (MHz)	&	2426.17	&	2720.94	&	2952.05	&	4319.48	\\	\hline
+	Warm-up	&	Socket Energy (mJ)	&	12351.55	&	16365.08	&	20808.11	&	73694.13	\\	\hline
+	Warm-up	&	Core Energy (mJ)	&	15.59	&	73.54	&	585.89	&	14197.97	\\	\hline
+	Warm-up	&	Uncore Energy (mJ)	&	12083.87	&	15312.1	&	16121.02	&	29164.49	\\	\hline
+	Cinebench R20 - Multi-thread - Pulse	&	CPU Temp (°C)	&	51	&	84.6	&	83.22	&	93.5	\\	\hline
+	Cinebench R20 - Multi-thread - Pulse	&	Frequency (MHz)	&	2406.35	&	3888.15	&	3808.28	&	4254.01	\\	\hline
+	Cinebench R20 - Multi-thread - Pulse	&	Socket Energy (mJ)	&	12098.86	&	133709.44	&	119371.73	&	166260.22	\\	\hline
+	Cinebench R20 - Multi-thread - Pulse	&	Core Energy (mJ)	&	18.54	&	13362.28	&	11792.34	&	17808.91	\\	\hline
+	Cinebench R20 - Multi-thread - Pulse	&	Uncore Energy (mJ)	&	-73446.4	&	26705.05	&	25033.04	&	100149.37	\\	\hline
+	Cooldown	&	CPU Temp (°C)	&	31	&	32.5	&	33.62	&	75.8	\\	\hline
+	Cooldown	&	Frequency (MHz)	&	2402.93	&	2512.79	&	2633.69	&	4257.44	\\	\hline
+	Cooldown	&	Socket Energy (mJ)	&	11785.45	&	13769.53	&	14239.29	&	33213.16	\\	\hline
+	Cooldown	&	Core Energy (mJ)	&	13	&	37.08	&	74.74	&	13984.07	\\	\hline
+	Cooldown	&	Uncore Energy (mJ)	&	-71637.41	&	13301.87	&	13641.35	&	30347.89	\\	\hline
+\end{tabular}
+}	\vspace{1.0ex}
+
+The idle period stats are in line with what we have been seeing, including the temperature averages being a little lower in the Cooldown period than the Warm-up period. It is just by a few degrees though and could be the result of the background tasks running during the Warm-up period, while the system should have very little to do during the Cooldown period.
+
+Looking at the test period though, the results are more interesting. For starters the mean is not quite pegged at 85 °C, though all that really suggests is that enough time was spent during the pauses between pulses to bring down those summary statistics, as the workload was definitely enough to get the CPU that hot. The frequency mean does not appear to be much higher than it was for the Prime95 results before, though the median definitely is by a little more than 100 MHz. It is worth nothing the median is going to be a more appropriate summary statistic here because it should not be as impacted by the lows from the pauses. The median is a position in the data, and so the values of the data are not specifically relevant to it, while they are relevant for the mean. In any case, we can also see the maximum frequency is greater than it was for Prime95, and the socket and core power statistics are also all greater than they were for the other test.
+
+This is the behavior I was hoping to capture with pulsed tests, as we can see the the brief time spent without a load allowed the CPU to recover its boost budgets enough to then push higher than it does under a more consistent load. Of course there will be some differences resulting from the loads themselves, so it is technically possible it is Cinebench R20 allowing the clocks and power draw to be greater, and not directly the pulsing. Well, except I have data from this test applying a constant load and though it was from months prior, the difference is quite clear; the pulsing enabled the CPU to boost higher and draw more power.
+
+\image{Frequency - Mean}
+
+That is a beautiful mess. Frequency, Socket Power, and Temperature are all bouncing up and down between idle values and their boosted values, and both Frequency and Socket Power show the boost budget exhausting during each run. Curiously, we also see the Socket Power was starting to trend upwards after the 1500 second mark, as though the boost budget were recovering better starting at that point. Of course it might be worth noting the Socket Power during any of the runs remained above the 120 W TDP of the processor, so even though the data did trend down initially, it remained in boost territory for the entire period, excluding the pauses between the pulses.
+
+Something else interesting to notice here is how the temperature plummets once the CPU is able to idle. We have been able to see this previously, at the start of the Cooldown period, but now we see how quickly it happens within just 5 seconds, crossing below 70 °C from roughly 85 °C. Luckily, despite this the quartile statistics do not seem to have been strongly affected. With the lower quartile for the test period at 84.5 °C, the CPU crossed that point after 123 seconds, and remained stable at that level. Of course it would fall down again once the run finished, but as we can see in the graph, it would quickly heat back up to the 85 °C with each new run. For the Cooldown period, the upper quartile was at 33.4 °C and that was crossed at second 4326, or after 7216 seconds (12 minutes and 6 second) without variability after that time.
+
+\image{Frequency}
+
+At first I was thinking there was not going to be much to learn from this, but then I spotted something I cannot readily explain, and it is in the plots for threads 3, 7, 9, and 11, which should be the logical threads for cores 1, 3, 4, and 5. After the test period ended, each one of these threads, but not the other thread on the same core, continued to run at the high frequency during the Cooldown period. We can even see the pulsing pattern continue. At least we do not see Core Power being elevated during that time, and Temperature falls as one would expect without a heavy load as well.
+
+I am at a loss to explain this because it simply makes no sense to me. The workload had ended, as we can see only the other twelve threads returned to idle speeds, and even if it had somehow continued for these threads, why would it complete multiple loops, as each pulse is a loop? The best I can think of, and I do not much like this idea, is the CPU intentionally kept these threads at a higher frequency, in anticipation of the workload resuming. Modern CPUs have many predictive elements to them, and it is not unreasonable to me that some would strive to improve performance by keeping threads at high frequencies, prepared for a workload, but without any work to do the power utilization can be at idle levels, as can temperature. The most confusing aspect to this behavior is why only one thread on these cores is at these frequencies, instead of both? There is more we can learn though, when we look at the frequency histogram later.
+
+\image{Core Power}
+
+With regards to the unusual behavior found in the Frequency graph above, we can see it here too, and neither the core nor uncore power usage helps to explain it.
+
+Though I am not sharing it, I looked at a Core Power histogram for this data, and it does not suggest any cores were running at elevated power levels during the Cooldown period.
+
+\image{Hist - Temperature}
+
+Neither of the idle periods I think are too interesting here, but I think the test period plot is, even if it is rather predictable. While there is the clear peak holding most of the data, the pulsing was enough to produce a visible tail at lower temperatures. There was also enough of this lower-temperature data to pull the mean completely outside of the box plot. At least the Cooldown period's mean is near the upper quartile.
+
+\image{Hist - Socket}
+
+Just like with the Temperature histograms above, the pulsing produced enough data at lower values to be visible, and to pull the mean a good distance away from the box plot. Amusingly, the mean is right at the CPU’s TDP, even though there is very little data there. Looking at the version of this graph for a constant version of this test is interesting, because of the shape of the histogram. For the constant run, the main body of the distribution was almost symmetrical, but here we see it is lopsided toward higher values. This makes sense as the PBO power budget would be partially recharged during each pause between the pulses, allowing the CPU to pull more power but still tend towards the peak we see the median on.
+
+\image{Hist - Frequency}
+
+Very much seeing the pattern we have seen in the prior two histograms repeated here, including the lopsided shape in the test period. Curiously there is a singular spike at 4 GHz, but that does not have to mean anything. According to the statistics 8.7% of the data was below 3.7 GHz and the remaining 91.3% between the base clock and 4.3 GHz boost clock, which gives an idea of the time spent paused.
+
+Looking at the Cooldown period we can see there is some data above the base clock, which would be that data we saw from those logical threads that made little sense. Fortunately we can see here it was also quite little data as it is only like specs in this graph. Using ECDF in R I can see just 1.332\% of the frequency data for the Cooldown period was above 3.7 GHz, so it seems this was only a ghost in the data. Why the ghost exists, I do not know, but it does not appear to be more than that.
+
+That finishes up what I have for this run, but I think these results have provided some interesting insights into how Precision Boost Overdrive operates. The five second pause between Cinebench R20 runs was not long enough to recharge the PBO budgets completely, but, at least based on the Socket Power data, the CPU was able to stay above its stock performance consistently. Those five seconds were also enough for the CPU to cooldown a good amount, crossing under 70 °C, a change of over 15 °C.

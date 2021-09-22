@@ -1,0 +1,187 @@
+\section{Scripting - Graph Renaming - CPU Thermal.py}
+
+There is one script left to cover, though it is not necessary for the collecting or processing of data. Instead, its purpose is to make the graphs suitable for uploading to Overclockers Club, where images need to use numbers for names, exclusively.Fortunately I have solved this problem before with the frametime performance data, so I can adapt that script for renaming those graphs for this. Central to the idea though is to use code numbers, as opposed to just incrementing the number. This way each graph for an article will have a unique number to it without having to be aware of the other graphs.
+
+Being a Python script, there will be several things similar between this and the "CPU Thermal.py" script covered earlier, so I will try to go quickly.
+
+\subsection{Module Loading, droppedPath, and Zero Padding Control}
+\begin{stylePy}
+import sys, os, shutil
+
+droppedPath	=	sys.argv[1].rsplit("\\", 1)[0] + "\\"
+
+os.chdir(droppedPath)
+
+Z	=	1
+\end{stylePy}
+
+The first two parts of this block of code are familiar if you have looked at the earlier section. The third part is quite simple as the \textbf{os.chdir} function is for changing Python's working directory, so it will know where to place the renamed copies of the graphs it creates. As a quick aside, I greatly recommend using copies when doing something like this to avoid data loss by some unfortunate error. Plus this way you still have the graphs with human-readable names.
+
+The last part of this block is rather important, will not be used for quite a bit. An important aspect of code numbers is not just what the number is but the placement of the numbers. If you may have a scenario where the numbers can be an inconsistent number of digits long, then you will want to use 0 padding. This simply adds zeroes to the front of the number so it can be a certain length, thereby ensuring a consistency of position across the code numbers. In this case the numbers can be a single digit wide, so the value here is 1, but if the number of tests, graphs, coolers, etc. got long enough then this could be increased to 2 to accommodate.
+
+Something to note is this will control zero padding for all of the numbers, and not just where they might be needed. In theory it is certainly possible to have the padding be more finely controlled, but I fail to see the benefit to so complicating these scripts, at least at the moment.
+
+\subsection{Stats File Finding}
+\begin{stylePy}
+for file in os.listdir(droppedPath):
+	if file.endswith("Stats.txt"):
+		droppedSTAT	=	file
+
+TYPE	=	"Data CPU\\"
+if TYPE in droppedPath:
+	droppedCOOL	=	droppedPath.split(TYPE)[1].split("\\", 1)[0]
+	droppedList	=	droppedPath.split(TYPE)[0]	+	TYPE
+elif "Data\\" in droppedPath:
+	droppedCOOL	=	droppedPath.split("Data\\")[1].split("\\", 1)[0]
+	droppedList	=	droppedPath.split("Data\\")[0]	+	"Data\\"
+\end{stylePy}
+
+There are a few things going on here, but nothing too complex. First the TXT file created by the Output.r script is searched for using \textbf{os.listdir} and a check for files ending in "Stats.txt." Once found the filename is stored to \textbf{droppedSTAT}. Something you may not have noticed before but is taken advantage of here is that file name contains a lot of the test configuration information. Not everything is there, which the second block of code gets to, but this one name does get us a lot.
+
+As for this second block, it is a little more involved because it needs to get information out of the directory tree and find a specific TXT file within it. Unfortunately the directory tree may contain the "Data" or "Data CPU" folder name, based on whether or not the GPU thermal scripts are present. Handling this is not too difficult, but is a little complicated as well, which is why I created the \textbf{TYPE} variable.
+
+You can see \textbf{TYPE} is used three times after it is set, which means there are three opportunities to make a mistake, especially when going back and forth between this and the GPU version of this script. "CPU" and "GPU" do not look very different when buried in code, so this prevented additional aggravation for me. After it is set though, the first thing that happens is a check for if \textbf{TYPE} is in \textbf{droppedPath} or if "Data" is, but what happens after that is identical either way.
+
+Two variables need to be made with the first being \textbf{droppedCOOL} as it splits apart \textbf{droppedPath}. The cooler name is present in the folder path and is always after the \textbf{TYPE} or "Data" folder, so that is the first split and what will be returned is a list of strings with the first being the path to that folder, and the second being the path after the folder. For the cooler name we are interested in the second half, so it is selected with index 1 (remember, Python starts its indices at 0), but we are not done quite yet. There is more to this half of \textbf{droppedPath} than just the cooler name, so we use \textbf{split} again, this time to cut everything after the cooler name off.
+
+The second variable is \textbf{droppedList} and is decidedly simple as it just creates the path to the folder, whether it is "Data" or "Data CPU." In this folder there should be a "Coolers.txt" file that contains a list of all the coolers used in the test. I also decided to add support for a "CPUs.txt" file, though I will admit my original plan for this script was not going to include such a feature, but then I had an idea, so I did it.
+
+\subsection{CPUs and Coolers List Searching}
+\begin{stylePy}
+droppedCPU	=	open(droppedSTAT, 'r').readlines()[1].strip("\n")
+if "CPUs.txt"	in	os.listdir(droppedList):
+	CPUs	=	open(droppedList + "CPUs.txt", 'r').readlines()
+	CPUs	=	[line.rstrip('\n') for line in CPUs]
+else:
+	CPUs	=	""
+
+if	"Coolers.txt"	in	os.listdir(droppedList):
+	COOL	=	open(droppedList + "Coolers.txt", 'r').readlines()
+	COOL	=	[line.rstrip('\n') for line in COOL]
+else:
+	COOL	=	""
+\end{stylePy}
+
+The TXT output file is continuing to prove its usefulness, especially as I have standardized the lines at the beginning for describing the configuration. As that file is assigned to \textbf{droppedSTAT} I can easily point Python to it to read the contents, which involves opening it in read-only mode before the \textbf{readlines} function can be applied. The CPU name is the second line of the file, which is index 1, and then the \textbf{strip} command will remove the new line symbol from the end.
+
+I want to explain something important about the CPU name because some may wonder or be tempted to have the "CPU Thermal.py" script add a folder level that identifies the CPU, much like it already does the cooler. The reason why that is a bad idea is because currently Python will automatically get the name from the hardware, and it can be long and cumbersome, assuming it is even appropriate for a folder name. For example, my test system's CPU is named, "AMD Ryzen 7 2700X Eight-Core Processor," which can be used for a folder name, but is cumbersome. Also I do not think such grouping is truly necessary because these scripts are about testing the thermal performance, so grouping by cooler is more appropriate. Regardless, pulling the information from the TXT file is simple and avoids any issue with the name's length or the possibility of special characters.
+
+The follow \textbf{if...else} statements are nearly identical, and I know that because I created the CPUs one by copying the coolers one. The idea to both is very simple though as they check for the existence of a "CPUs.txt" and "Coolers.txt" files, which most users likely do not need to worry about. These are to record the different CPUs and coolers used, and for them to be in whatever order you prefer. Python, if the files are found, will open the files, read in all of their lines, strip the line breaks from the ends, and assign these lists to the appropriately named \textbf{CPUs} and \textbf{COOL} variables. If the files are not found, however, then these variables are given empty strings, which later will be interpreted to mean the code number should be 0.
+
+Speaking of code numbers, we do need to set those.
+
+\subsection{Test Code Numbers}
+\begin{stylePy}
+BENCHs	=	[\
+["Cinebench R20",	1],\
+["Cinebench R23",	2],\
+["Prime95",			3],\
+["3DMark",			9]
+]
+
+TESTcpu	=	[\
+["Multi-thread",		0],\
+["Single-thread",		1],\
+["Prime95 Torture Test",	0],\
+["Fire Strike - Physics",	0],\
+["Fire Strike - Combined",	1],\
+["Time Spy - CPU",			2]
+]
+
+PACE	=	[\
+["Constant",	0],\
+["Pulse",		1],\
+["Prime95 Torture Test",	0],\
+["3DMark",		1]
+]
+\end{stylePy}
+
+It is critical when working with code numbers to have some control over how they encode information, which is what these three arrays and another after them do. An array in Python is not a partically pleasant thing to work with, at least compared to matrices and data frames in R, but regardless the idea here is to have a list of lists. The inner lists consist of two values with the first being a string, the information to be encoded, and the second is a number, the code for the information. These are then elements of a larger list creating this array that is a little awkward to access as it does not have a concept of rows and columns. Instead you must do two selections that is a little awkward, but it works, which is ultimately what matters.
+
+In any case, as you can see the names and types of tests are contained in \textbf{BENCHs} and \textbf{TESTcpu}, with both designed so that they will match the code numbers used for selecting tests in "CPU Thermal.py." This includes some numbers being repeated, such as "Multi-thread" and "Prime95 Torture Test" both being encoded as 0, and we see that happening in the \textbf{PACE} array as well. So long as the permutation of numbers is unique, there can be such re-use of numbers. In fact, using the same number can have some advantages as well.
+
+\subsection{Graph Code Numbers}
+\begin{stylePy}
+TYPEs	=	[\
+['Frequency - Mean',	1],\
+['Frequency - Max',		1],\
+['Frequency',			2],\
+['Core Power',			3],\
+['Hist - Temperature',	4],\
+['Hist - Socket', 		5],\
+['Hist - Frequency',	6],\
+['Hist - Core',			7],\
+['Hist - Uncore',		8],\
+]
+\end{stylePy}
+
+Here is the list of graphs matched with their code numbers and the advantage I was speaking of is present at the very beginning as both the mean and maximum versions of the frequency or course graph are mapped to 1. This is because both graphs effectively show the same information; a measurement of the frequency of the loaded threads. Of course these graphs are not interchangeable, but they occupy the same place when reviewing results and only one is ever produced for a given set of data.
+
+\subsection{}
+\begin{stylePy}
+def	codFind	(statname, list):
+	for i in range(len(list)):
+		if list[i][0] in statname:
+			return(list[i][1])
+
+def numFind	(filename, list):
+	if list == [""]:
+		return(0)
+	for i in reversed(range(len(list))):
+		if list[i] in filename:
+			return(i+1)
+	return(0)
+
+def codGraph	(filename, list):
+	for i in range(len(list)):
+		if list[i][0] + ".png" == filename:
+			return(list[i][1])
+\end{stylePy}
+
+These three functions do fundamentally the same thing; take a name and a list, then search for the name in the list to return some value. To go through the list the \textbf{len} command is used to get the length of the list and then \textbf{range} is used to generate an appropriate sequence. It should be noted that \textbf{range} cannot be directly used to generate a sequence of numbers, but must be paired with a loop like this. This is one of those quirks of Python I tremendously dislike for its unintuitive design, but that is how it works.
+
+The first and third functions are designed for the arrays given earlier as they check for the number given in the inner-lists, with the real differences only being the kind of name they check. Technically it should be possibleto just add the PNG extension when calling the \textbf{codFind} argument and remove \textbf{codGraph}, but I lack the desire to make the minor changes.
+
+The second function is appreciably different from the other two because it is able to handle some special conditions the others do not. Firstly, it checks if the \textbf{list} argument is an empty string (rather a list consisting of a single empty string), because that can happen if a list of CPUs or coolers is not provided. If the check passes, then 0 is returned and we are done here. If it fails, then the provided list is searched, but in reverse. Though I do not think it is so necessary now, at one point I had some issues with names being too similar and false positives breaking the codes. A quick but effective fix at the time was to run through the list in reverse, which is achieved with the \textbf{reversed} function.
+
+Something else that makes this function special is it does not work pairs like the other two, so it cannot look up the desired code number and must instead generate one. This is easily done by using the iterator from the \textbf{for} loop, but also adding 1 to it. This addition is because I would like to start at 1 but also 0 is already taken for when the list is empty. Also 0 will be returned if the name is not in the list, making it very appropriate to ensure the loop does not return it.
+
+\subsection{numGen Function}
+\begin{stylePy}
+def numGen (filename):
+	CODE	=	[	[],	[],	[],	[],	[],	[]	]
+	#	CPU, Cooler, Bench, Test, Pace, Graph
+	CODE[0]	=	numFind(droppedCPU,		CPUs)
+	CODE[1]	=	numFind(droppedCOOL,	COOL)
+	CODE[2]	=	codFind(droppedSTAT,	BENCHs)
+	CODE[3]	=	codFind(droppedSTAT,	TESTcpu)
+	CODE[4]	=	codFind(droppedSTAT,	PACE)
+	CODE[5]	=	codGraph(filename,		TYPEs)
+	
+	CODE.pop(0)	if CODE[0]	==	[0] else None
+
+	code	=	""
+	for x in CODE:
+		if x != "":
+			code	=	code + str(x).zfill(Z)
+
+	return(code)
+\end{stylePy}
+
+This is the function that actually builds the code number, hence the name \textbf{numGen}. Its lone argument is the filename of the graph, which is appropriately named \textbf{filename} and the first thing it does is build the list \textbf{CODE}. This is a list of empty values but what really matters is the length, as it matches the number of code numbers. I decided that instead of building the code number directly, I wanted each number stored so additional manipulations, like adding zero padding, can be done after the fact. Also it helps with debugging to store the information this way. A comment identifies the different positions in \textbf{CODE} and then we get on to setting the elements. Technically the elements can be set in any order because the final string is built from \textbf{CODE} and its order is all that matters. Anyway, you can see the different functions being used for the different values. Also you can see that three of the numbers are gotten just from \textbf{droppedSTAT}.
+
+After the elements are set I conditionally remove the first element, which holds the CPU code number. Because \textbf{numFind} was used, a 0 in this position means no list of CPUs was provided, which most likely means only one was tested, making it completely unnecessary to include in the code number. To do this check I am using a ternary operator and the \textbf{pop} function. The operator checks if the first element of \textbf{CODE} is a 0, and if it is then \textbf{pop} will be used to remove that element from the list. If the check fails though, then nothing happens because of the "None." Realistically it should not be necessary here to provide an \textbf{else} operation, but Python demands it.
+
+With the work on \textbf{CODE} completed, the string to be used to rename the current graph, \textbf{code}, can be worked on. First it is made an empty string so it can be added to, and then a \textbf{for} loop steps through \textbf{CODE}. Assuming the element is not an empty string, it will be made into a string, have zero padding applied with \textbf{zfill}, and concatenate the result onto the end of \textbf{code}. Once the loop ends, the string is returned.
+
+\subsection{Folder Creation and Graph Copy-Renaming}
+\begin{stylePy}
+if not os.path.exists("@Graphs"):
+	os.mkdir("@Graphs")
+
+for file in os.listdir(droppedPath):
+	if file.endswith(".png"):
+		shutil.copyfile(file, "@Graphs\\" + numGen(file) + ".png")
+\end{stylePy}
+
+This is the final piece of the script that starts with creating the “@Graphs” folder to hold the graphs, if the folder is not already present. After that a \textbf{for} loop wil work through the files in the path, check if they are PNG files, and if they are \textbf{shutil.copyfile} is used to copy the file to the graph, but with the code name created by \textbf{numGen}.

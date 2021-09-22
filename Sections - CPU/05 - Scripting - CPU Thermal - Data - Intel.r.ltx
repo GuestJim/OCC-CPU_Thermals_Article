@@ -1,0 +1,105 @@
+\section{Scripting: CPU Thermal - Data - Intel.r}
+
+Now for the script that handles importing data from Intel's Power Gadget utility, and converting it to the same format as the AMD data. As I originally worked with data from AMD systems, it is the standard. This script will be much simpler though, because only one file needs to be imported, but also because Power Gadget provides far less information, at least from my testing. Perhaps a different CPU than the i5-4200U in my laptop will provide more information, but all it gives me is the frequency and power usage for the whole CPU, and no by-core or even by-thread like AMD µProf provides, as well as the temperature. Of course there is one thing similar between these two applications, and that is the need to remove some rows that contain information other than I am interested in.
+
+\subsection{Intel Power Gadget Importing}
+\begin{styleR}
+CPUdata	=	read_csv("Intel-CPU Profile.csv")
+
+dataFILT	=	CPUdata[1:(nrow(CPUdata) - 15), pmatch(c(
+	"Elapsed Time (sec)",
+	"CPU Frequency_",
+	"Processor Power_",
+	"Package Temperature_"), colnames(CPUdata))
+	]
+\end{styleR}
+
+Naturally the first step is to load in the "Intel-CPU Profile.csv" file, which is accomplished with \textbf{read\_csv}. Next I filter the data down, hence why I have this new object named \textbf{dataFILT}. The unwanted information I mentioned is at the end of the file instead of the beginning, which is why I have the row selection be from 1 to fifteen less than the last row. The \textbf{nrow} function provides the number of rows an object has.
+
+To select the desired columns, I use the \textbf{pmatch} function that searches for matches between two lists. The first list contains strings that will be in the column names I desire, and the second list is the column names.
+
+\subsection{Pivoting dataFILT into dataALL}
+\begin{styleR}
+dataALL	=	pivot_longer(dataFILT,
+	cols			=	-1,
+	names_to		=	c(".value", "Socket"),
+	names_pattern	=	"(.*)_([:digit:]*)",
+	names_ptypes	=	list(Socket = factor(ordered = TRUE))
+)
+\end{styleR}
+
+The \textbf{pivot\_longer} function is used once again, though this is not exactly the situation for it. Power Gadget may have separate columns for each processor it is collecting data for, but as most any consumer system will only have one processor, this function is overkill. It is a generalized solution though, as it should work for those systems with multiple Intel CPUs, so there is an excuse to use it.
+
+Naturally it is the \textbf{dataFILT} object I want to pivot and its output will be \textbf{dataALL}. As the first column contains the time information, it is removed from the pivoting by passing -1 to the \textbf{cols} argument. The \textbf{names\_to} argument is a bit complicated than we saw before, being a pair of values in a list. The first in the list is ".value" and the function interprets that to mean the naming for the new columns should come from the old columns it is about to work on. It will work in tandem with the \textbf{names\_pattern} argument I will get to shortly. The second value is "Socket" and this will be the name of another column, which will get its values from the old column names.
+
+For the \textbf{names\_pattern} argument we have a regular expression pattern with two pieces and an underscore separating them. The first piece, which can be any number of any character, will be used to name new columns, because of the ".value" element for the previous argument. The second piece, after the underscore and comprised of some number of digits, will be placed in the "Socket" column.
+
+The final argument is \textbf{names\_ptype} and it means the "Socket" column should be ordered factors. As I explained in the section for the AMD version of this script though, it seems this argument may now have a different purpose and there is a new (to me at least) \textbf{names\_transform} argument. This new argument is what will convert the data type of a column to what is specified. If the \textbf{names\_ptype} argument is causing problems then, changing it to this new argument might be the solution.
+
+You may notice and find it odd there are no arguments concerned with the values being placed into columns. This is because there are no columns to convert into rows and label appropriately. All that is actually going to happen is a column named "Socket" will be created with the digits following the underscore in the old column names being placed in it. That underscore and digits will also be removed from the original column names, so this is an elaborate means to pull information out of the names and could potentially be done by some other method.
+
+\subsection{Setting Column Names}
+\begin{styleR}
+colnames(dataALL)	=	c("Time", "Socket", "Frequency", "Socket_Energy", "CPU_Temp")
+\end{styleR}
+
+This line will change the column names to match those of the AMD data. As Power Gadget records the elapsed time, rather than real time measurements are made, the first column can be named "Time" without any trickery.
+
+\subsection{PERIODS (Compact), Warm-up Offset, and Configuration Information}
+\begin{styleR}
+PERIODS	=	function(DATA,	BREAKS = c(warm, duration),	LABELS = levsPER){
+	out	=	ifelse(DATA$Time <= BREAKS[1],	LABELS[1],
+					ifelse(BREAKS[1] + BREAKS[2] < DATA$Time,	LABELS[3], 
+				LABELS[2]))
+	out	=	ordered(out, levels = LABELS)
+	return(out)
+}
+
+dataALL$Period	=	PERIODS(dataALL)
+dataALL$Time	=	dataALL$Time - warm
+dataALL$CPU		=	ordered(CPUname)
+dataALL$Cooler	=	ordered(COOLERname)
+dataALL$Test	=	ordered(TESTname)
+\end{styleR}
+
+I mentioned in the section for the AMD data script an alternate, more compact design for the \textbf{PERIODS} function. As that function also needs to exist here, I decided to use the more compact version to show how they both work. The only difference between them is the chain of nested \textbf{ifelse} functions, which is now just two deep instead of three. The first condition is identical to before, seeing if the "Time" values are less than the length of the Warm-up period. If that is true, "Warm-up" from \textbf{levsPER}, but if it is false then we get to the second \textbf{ifelse} that instead checks if the "Time" values are greater than the sum of \textbf{warm} and \textbf{duration}, which would be when the Cooldown period starts. If this is true then "Cooldown" from \textbf{levsPER} will be returned, but if it is false then \textbf{TESTname} by way of \textbf{levsPER} will be returned.
+
+While this is more compact, it is also a little less obvious because it goes first, third, second. This is why I have the tabbing staggered as it is, so that shows the order. In the end, it truly does not matter which version of \textbf{PERIODS} is used because both produce identical results. (I even verified this using the \textbf{identical} function.)
+
+After the periods are identified, the "Time" column is altered by having the length of the Warm-up period subtracted from it. The reason for this is so everything is centered around the running of the workload, as its launching occurs at the new 0. The "CPU," "Cooler," and "Test" columns are also added just like they were in the AMD script, so that \textbf{dataALL} and "Combined.csv.bz2" will contain this configuration information.
+
+\subsection{Columns Added and Converted to Match AMD}
+\begin{styleR}
+dataALL$Core			=	factor(0)
+dataALL$Thread			=	factor(0)
+dataALL$Socket_Energy	=	dataALL$Socket_Energy*1000
+#	to convert to mW, matching AMD data
+dataALL$Core_Energy		=	dataALL$Socket_Energy
+dataALL$Uncore_Energy	=	0
+\end{styleR}
+
+This code handles various formatting differences between the Intel data so far and the final version of the AMD data. The first two lines add "Core" and "Thread" columns and make their contents 0, though as a factor rather than a number. Remember, Power Gadget only records data for the entire processor, at least in my experience, and so there is no per-core or per-thread information. I make it all 0 so it will still work properly with the Output script.
+
+The "Socket\_Energy" values are multiplied by 1000 for the reason stated in the comment line. The AMD data uses milli-Joules but Power Gadget records in Watts, making the unit conversion necessary so everything aligns properly. As both use a sampling rate of once a second, Joules and Watts can be interchanged, because one Watt is defined as one Joule per one second. You may have also noticed I set the column name earlier to be "Socket\_Energy," which is to match the AMD data, even though Power Gadget records power, but as I just explained, this is a trivial difference in this situation.
+
+Next the "Core\_Energy" column is given the same values as the "Socket\_Energy" column and an "Uncore\_Energy" column is created and set to 0. In both cases this is for compatibility with the Output script. I do want to point out that Intel CPUs do also have uncore components that will consume power, though they are not quite as interesting as on AMD's CPUs, because of that company's Infinity Fabric and chiplet design.
+
+\subsection{diff.CONS Function, dataALL Order, and Combined.csv.bz2 Output}
+\begin{styleR}
+diff.CONS	=	function(DATA, DIR = "Forward", lag = 1)	{
+	if	(DIR == "Forward")	return(c(diff(DATA, lag = lag), rep(0, lag)))
+	if	(DIR == "Backward")	return(c(rep(0, lag), diff(DATA, lag = lag)))
+}
+
+dataALL$CPU_Temp_Diff	=	diff.CONS(dataALL$CPU_Temp, lag = length(unique(dataALL$Thread)))
+
+dataALL	=	dataALL[order(dataALL$Time, dataALL$Socket, dataALL$Core, dataALL$Thread),]
+
+write_csv(dataALL, "Combined.csv.bz2")
+\end{styleR}
+
+Once again, all of this is identical to what was in the "Data – AMD.r" script, and for that reason I shall cover it quickly. The \textbf{diff.CONS} function handles finding differences between consecutive values in a list, though it is not limited to just consecutive values. Through the \textbf{lag} argument they can be multiple elements apart, even though that is not necessary here as Power Gadget does not report multiple threads.
+
+The rows in \textbf{dataALL} are then ordered, first by "Time," and then by "Socket," "Core," and "Thread," which I feel is appropriate as this follows decreasing levels of significance. Of course with the "Core" and "Thread" columns containing a single value, this is hardly important, but just in case something changes and I am able to get such specific data, this will be ready.
+
+Lastly the \textbf{dataALL} object is written out to the compressed file "Combined.csv.bz2" by the \textbf{write\_csv} function of the \textit{readr} library.

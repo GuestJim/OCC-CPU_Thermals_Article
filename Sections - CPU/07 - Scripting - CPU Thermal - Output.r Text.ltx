@@ -1,0 +1,147 @@
+\section{Scripting: CPU Thermal - Output.r (Text and HTML Output)}
+
+As the title for this section indicates, the focus here will be on the text outputs, which are not all that difficult or tricky to produce, so it should prove a short section. One thing I wish to cover first is the \textbf{sink} function, which according to the documentation diverts the output of R to a connection, and also stops this diversion. In other words, it provides a way to send content to files, if the connection is to a file. It is a little more complicated than that, as we shall see, but that gets the ball rolling.
+
+\subsection{sinkTXT Output Function}
+\begin{styleR}
+sinkTXT	=	function()	{
+	options(width = 1000)
+	printFrame	=	function(FRAME, ...)	print.data.frame(FRAME, row.names = FALSE, ...)
+
+	sink(paste0(TESTname, " - Stats.txt"), split = TRUE)
+		writeLines(TESTname)
+		writeLines(CPUname)
+		writeLines(COOLERname)
+		writeLines(ifelse(is.numeric(PULSE),	paste0("Pulse pause length, in addition to loading:\t", PULSE, " s"),	"")	)
+		
+		writeLines("\nIgnore negative Uncore Energy")
+		
+		writeLines("\nWarm-up Period")
+		printFrame(longSUM[longSUM$Period == "Warm-up", ])
+		
+		
+		writeLines(paste0("\n", TESTname, " Period"))
+		printFrame(longSUM[longSUM$Period == TESTname, ])
+		
+		if (!is.null(FREQspec))	{
+			writeLines("\nFrequency Percentages")
+			dataTEST	=	dataALL[dataALL$Period == TESTname, ]
+			dataTEST	=	if (MULTI)	dataTEST$Frequency else as.vector(by(dataTEST$Frequency, dataTEST$Time, max))
+			ECDF	=	ecdf(dataTEST)
+			BASE	=	min(FREQspec)
+			
+			LESS	=	ECDF(FREQspec - 0.01)				;	names(LESS)	=	paste0("<",	FREQspec,	" MHz")
+			EQUA	=	diff(ECDF(c(BASE - 0.01, BASE)))	;	names(EQUA)	=	paste0("=",	BASE,		" MHz")
+			
+			print(round(c(LESS, EQUA)[order(substring(names(c(LESS, EQUA)), 2))] * 100, 2))
+		}
+		
+		writeLines("\nLinear Model Slopes:")
+		print(CPUslopes())
+		writeLines("\nLinear Model Slopes (minute):")
+		print(CPUslopes() * 60)
+		
+		writeLines("\nFirst Quartile Temperature Reached")
+		writeLines(paste0(quantile(dataALL[dataALL$Period == TESTname, ]$CPU_Temp, 0.25), " °C\n"))
+		printFrame(tempCROSS(dataALL, TESTname, 0.25, ">="))
+		
+		
+		writeLines("\nCooldown Period")
+		printFrame(longSUM[longSUM$Period == "Cooldown", ])
+
+		writeLines("\nThird Quartile Temperature Reached")
+		writeLines(paste0(quantile(dataALL[dataALL$Period == "Cooldown", ]$CPU_Temp, 0.75), " °C\n"))
+		printFrame(tempCROSS(dataALL, "Cooldown", 0.75, "<="))
+	sink()
+}
+\end{styleR}
+
+The reason I created this \textbf{sinkTXT} function is to make the script more modular and easier to paste into the R GUI, which is also why I have done similar things with the graphs. By encapsulating all of the commands for creating the TXT output into a function like this, I can easily paste the content of this script into the GUI without having the file actually created, or modified if one already exists. The \textbf{sinkTXT} function must be run to do that, and that happens at the end of the script, when the graphs are also being saved to files. It may not seem all that necessary, but when you are experimenting with something and want to put almost the entirety of this script into the GUI for your experiments, this is very helpful.
+
+Entering into the \textbf{sinkTXT} function, as it has no arguments, the first line is a call to the \textbf{options} function, setting a value for \textbf{width}. This determines how many characters wide the GUI or the \textbf{sink} output's contents can be, and the default of 80 is not much. By setting it to 1000 characters wide, I do not need to worry about R trying to unintelligently wrap any of what will be written, which can be quite a pain.
+
+The next line is another custom function I named \textbf{printFrame} that is really just a wrapper for \textbf{print.data.frame}, a necessary function to have R print a data frame correctly. It has an undesireable default for me though, and that is having row names turned on, so with this wrapper I have the \textbf{row.names} argument set to "FALSE." The only other thing to note about this function is the "..." symbol that can be very useful with some custom functions. What it allows is for arbitrary optional arguments to be provided to a function on one level, and then passed on to another. For example, I could provide an additional argument to \textbf{printFrame}, such as \textbf{right}, which controls if what is printed is right aligned or not, with the default being "TRUE" (which makes sense for aligning numbers). If I wish to change that, I could place that command in the list of \textbf{printFrame} arguments and as my function does not use it, it will be passed on to the lower \textbf{print.data.frame} function.
+
+With that function made, the \textbf{sink} function is run with the first argument being a string created by the \textbf{paste0} function. The \textbf{paste} function is for concatenating strings together, and will also convert objects to strings without having to use \textbf{as.character} or another converting function. The \textbf{paste0} function is a wrapper for it that will not add any special characters to separate the objects being concatenated. In this case I want the name of the test with "- Stats.txt" attached to the end, thereby naming the file to be created by \textbf{sink}. The argument \textbf{split} I also used and set to be "TRUE," which means the outputs will not go just to the file, but will also be shown by R. This is useful for diagnosing any issues, as it allows you to see what R is trying to do, without needing to open the TXT file or worry about formatting issues it may have.
+
+With the \textbf{sink} file opened, the \textbf{writeLines} function will do exactly what its name suggests by writing the text passed to it to the \textbf{sink} file. At the top of the TXT file I want the names of the test, CPU, and cooler written, each on their own line, to make it very clear what the configuration for the follow statistics was.
+
+After those first three lines will be a fourth and it will either be blank or give the pulse pause length, in addition to loading time, added as part of the test. Controlling what is written is the \textbf{ifelse} function that takes a condition to check as its first argument, followed by what the return if the condition is "TRUE" and then what to return if the condition is "FALSE." (I know I have covered the function previously, but I sometimes like repeating myself in new sections.)The reason I am doing it like this is so the alignment of the data will be the same regardless of if the test was pulsed or not. When going between multiple TXT files, such alignment is quite helpful.
+
+Something handy about \textbf{writeLines} is it will create a new line each time to hold whatever it was given to write. R will ignore blank lines (and commented out lines), which is also handy here as it allows one to freely separate the lines of code. If you do want a blank line in the output then, you need to use the symbol for it, "\n," which you can see I have placed at the front of the next \textbf{writreLines} and several others.
+
+After a couple more calls to \textbf{writeLines} we get to the first use of \textbf{printFrame}, which will write a subset of the \textbf{longSUM} frame made earlier. Rather than pack each period together, I like having a separate table for each period, so this subset is for just the Warm-up period, selected using square bracket notation.
+
+The next couple lines are similar but will show the \textbf{longSUM} results for just the test period, after a line is written identifying the period. After that we have a check for if values were provided for \textbf{FREQspec} or not. If not, then nothing will be written which does risk the misalignment I was just talking about, but I am not too concerned because I believe if someone is going to invest the time to give values for \textbf{FREQspec} once, they will do it for every recording they are working with.
+
+If values were provided, then the first thing that will happen is a line will be written labelling what the statistics to follow are; the percentage of time spent below or at the provided frequencies. The first step in this process is the creation of \textbf{dataTEST}, that is exactly like we saw before as it is \textbf{dataALL} filtered down to just the test period. The next line is a little more complicated though, but very important. Ultimately what will happen is the empirical cumulative distribution function, \textbf{ecdf}, will be created and run on the frequency data so we can get the corresponding percentiles for the specified frequencies. The catch is the results will be very skewed if the test is single threaded because only one or two threads might be boosted, while the rest are at idle frequencies.
+
+Fortunately the \textbf{MULTI} variable already tracks this and by using and \textbf{if...else} statement, \textbf{dataTEST} will either be the complete "Frequency" column, or the \textbf{by} function will be invoked. Though they are certainly different, \textbf{by} has some similarities to \textbf{aggregate} in that you are able to give it data and specifies the groups it should be grouped by, and then have some function applied to those groups. In this case the data is "Frequency" and the groups are the values for "Time," so every frequency measurement at a specific time is grouped together. The \textbf{max} function is then applied to these groups, so the final result is the maximum frequency at each time measurement. Technically it is an assumption, but a very reasonable one that in a single-threaded test the highest frequencies will belong to the threads doing the work at the time, and so this should filter out the idling threads.
+
+With \textbf{dataTEST} now just the appropriate frequency data, the \textbf{ecdf} function is made and assigned to \textbf{ECDF}. This is different from what we have seen before with functions, but still quite easy to work with. What \textbf{ecdf} returns is not a value like \textbf{mean} or \textbf{median} but a function, so in order to get a value out of it we must pass it an argument like we would any function; with parentheses surrounding the argument. By not doing that here, \textbf{ECDF} is going to store the function itself, so we can pass it arguments later without needing to write out as long of a command.
+
+After creating \textbf{ECDF}, \textbf{BASE} is created and given the minimum value of \textbf{FREQspec}, which I am assuming is the base frequency for the processor. I want this specific frequency pulled out to make it easier to see exactly how much time is spent at that frequency, as opposed to being in a boosted state.
+
+The next steps are to actually get the \textbf{ecdf} values and assign names to them. First \textbf{LESS} is created and will be assigned the quantiles for time spent less than the frequencies given by \textbf{FREQspec}. Normally \textbf{ecdf} would return the value that is less than or equal to, but by subtracting the very small 0.01 from \textbf{FREQspec}, it will just be less than. (There will almost certainly be no data between these lesser values and the provided frequencies.) Rather than take another line, I use a semicolon to give the next command on the same line in the script, which is to assign names to \textbf{LESS} using the \textbf{names} function. These names combine the less-than symbol with the values from \textbf{FREQspec} and then the unit, MHz, at the end.
+
+The next line creates \textbf{EQUA} and it finds the difference between the \textbf{ecdf} of \textbf{BASE} and 0.01 less than \textbf{BASE}. This result should be the amount of data at the base frequency, as the name I assign the value indicates, and so ultimately we will have the amount of frequency measurements below the base frequency, at the base frequency, and then below the boost frequency.
+
+The final line of this is to print the results, but only after some important manipulations. Two of these manipulations are just simple formatting, converting the quantiles to percentiles by multiplying by 100, and rounding that result to two decimal places. The other manipulation is to set the order so there is a consistent direction from left to right.
+
+Though the code looks complex, it is not that hard to follow. The key to it is the use of the \textbf{substring} function with \textbf{order}. The latter function will sort the elements it is given and return the indices that will recreate the sorting, which is very powerful as it means you can sort one list by another. In this case that other are the names of \textbf{LESS} and \textbf{EQUA} combined, but it is a little more complicated than that. At the front of the names will be a symbol for equal to or less than, and we want these symbols ignored for the sorting. This is where \textbf{substring} comes in because, as its name suggests, it can give us a section of the original strings and it works by giving it the index of the character to start at, and optionally the character to stop at but we do not need that. By telling \textbf{substring} to start at the second character, the symbols will be removed and it will be the frequency number at the start of the string, and so \textbf{order} will sort as desired. Well, mostly it will be correct because there is one catch that is very important, but also easy to address.
+
+When combining the two results, it is necessary for \textbf{LESS} to be ahead of \textbf{EQUA}. When two values are the same, \textbf{order} will keep the original placement, so if the variables were reversed the \textbf{EQUA} result would be ahead of the \textbf{LESS} result, which would be counter to the left-right order I wish for these results.
+
+The remaining code for \textbf{sinkTXT} is appreciably simpler than the \textbf{FREQspec} portion, partly because it has been contained in custom functions described in the previous section on functions. (Perhaps I should make such a custom function, but do not feel the need to currently, especially as it is all within an \textbf{if} statement.) The next bit is to write the slopes from the linear models, which it does twice. The first version is directly the results from \textbf{CPUslopes} while the second multiplies the results by 60, so the units of the slopes change from per second to per minute. This makes the values larger but I also think easier to understand, especially when looking at the relevant graphs because a minute is so much wider.
+
+After the slopes we have the information for the first or lower quartile for the temperature of the test period. First the label is given and then the value by using \textbf{quantile} and bracket notation to filter down to just the test period. Finally \textbf{tempCROSS} is used to return the list of values that cross the lower quartile, and though it is not necessary the operation is given as an argument. This is because I originally used a different function that required the argument and I only changed the function name.
+
+Ending the \textbf{sinkTXT} function is the code for writing the Cooldown period's statistics, first from \textbf{longSUM} and then the \textbf{tempCROSS} results for crossing the third or upper quartile. The only thing left is to call \textbf{sink} once more to close the TXT file and then we can close the function and move on to the next one.
+
+\subsection{writeOCC HTML Output Function}
+\begin{styleR}
+writeOCC	=	function(DATA, dataNAME, name=TESTname, fold = "")	{
+	if (!require(tableHTML))	return(NULL)
+	#	if tableHTML is not present to be loaded, no HTML files will be produced
+	OCCHTML	=	function(DATA)	{
+		tableHTML(DATA, rownames = FALSE, class="OCC") %>%
+		replace_html('style="border-collapse:collapse;" class=OCC border=1', 'align="center" border="1" cellpadding="1" cellspacing="1" style="width: 90%;"') %>%
+		replace_html(' id=\"tableHTML_header_\\d\"', '', replace_all = TRUE) %>%
+		replace_html(' id=\"tableHTML_column_\\d\"', '', replace_all = TRUE)
+	}
+
+	if	(fold != "")	{
+		write_tableHTML(OCCHTML(DATA), file = paste0(fold, "\\", name, " - ", dataNAME,".html"))
+	}	else	{
+		write_tableHTML(OCCHTML(DATA), file = paste0(name, " - ", dataNAME,".html"))
+	}
+}
+\end{styleR}
+
+This function is a bit different than what it used to be, but not by much. If you look inside the \textbf{writeOCC} function you can see the \textbf{OCCHTML} function and originally these were not nested, but two separate functions. In theory this would be appropriate if I wished to create HTML tables with formatting other than I use at Overclockers Club, but I neither have another use for such tables and even if I did, I am unsure if I would use different formatting, so I made it a single function.
+
+The arguments for \textbf{writeOCC} are \textbf{DATA}, for what should be written, \textbf{dataNAME} and \textbf{name} that should be considered together, and lastly \textbf{fold}, which is for placing the HTML outputs in a subfolder of the working directory. The two naming arguments are for naming the output files with \textbf{name} meant to be something common across the four that will be created here. All four outputs are versions of \textbf{longSUM}, with one containing all of the data and the other three are offsets for just the periods. Across them \textbf{name} will be the same, and by default it is \textbf{TESTname}, though I also have that set when calling \textbf{writeOCC} later. The \textbf{dataNAME} argument is meant to identify the subset then, such as "All" or "Warm-up."
+
+Within the function the first thing that will happen is an attempt to load the \textit{tableHTML} library that actually handles writing the HTML tables. I am loading the library a bit differently than I have the other libraries, using \textbf{require} rather than \textbf{library}. The difference between these two commands is the latter will throw an error if the library is not installed and able to be loaded, while the former only throws a warning and returns "FALSE." By placing it in an \textbf{if} statement like this then, it will load the library and move on, or it will fail to load the library and instead leave the function by returning "NULL." This will mean no HTML files will be produced, as the comment notes. Perhaps something more complicated would be better, such as trying to install the package for the user or pausing so they can read a message about the missing package, but I see little need to add such complexity. As it is the HTML files are only useful for publishing the results on a website, whereas for personal use the TXT and graph outputs should be plenty. The TXT file contains all of the information the HTML files will have, and more.
+
+After loading the library, next is the \textbf{OCCHTML} function, which only has a single argument and this is also the first argument for \textbf{tableHTML}; the data to be written. As everything else is to set my desired defaults for the output, there is no need for other arguments to my function. For \textbf{tableHTML}, however, there are a couple arguments I wish to set, with the first being to disable the writing of row names. Simply put, I almost never use row names and so do not want the always present numbers written in any outputs. The other argument I am using is \textbf{class}, and it sets the HTML class for the table, which is not important for me. In fact, in the very next line I have it removed as it is unnecessary for my uses, but by providing a string to this argument, it will not be automatically generated, making the removal more difficult.
+
+To edit the output of \textbf{tableHTML} the \textbf{replace\_HTML} functions are to be used, but applying them is different than we have seen before. Rather than calling them and explicitly passing an argument, instead we use the unusual "\%>\%" symbol which is a pipe. The idea to a pipe in many programming languages is to directly pass the output of one call to another, and so is quite appropriate to use here. It should be noted that R lacked a pipe symbol in the base version for quite some time. Obviously this library implements it and there was a Tidyverse library that added it as well, but now it is available as part of the software in general. There are some spots I could make use of it, but to avoid breaking backwards compatibility I have left the code largely as it is.
+
+In any case, the \textbf{replace\_html} function does exactly what its name suggests and behaves much like any string replacement function. The arguments are first the pattern to find and replace, while the second is the string to replace the pattern with. Lastly for the two final calls to the function is the \textbf{replace\_all} argument so the function will be applied at every instance of the pattern, instead of just the first. For the first call though, there is only the one instance of the code I wish changed and it is to set the table style I wish, which is to have it center aligned, with thin borders, padding, and spacing, and for the table to take up 90% of the horizontal space. The other two calls are to remove unnecessary code that just makes the HTML messy to manually examine.
+
+The next bit is quite simple as it is what will write the HTML tables, but we do need the \textbf{if} check for if a subfolder was specified. If it was, then that will be appropriately added to the filename, and if not then the filename will just be a combination of \textbf{name} and \textbf{dataName}. Anyway, \textbf{write\_tableHTML} is the function that will actually write the tables, and it must be given a result from \textbf{tableHTML}. This function cannot work with an arbitrary table-like object, which is important to know if you are interested in doing any experimenting. By passing it \textbf{OCCHTML} with the \textbf{DATA} argument though, everything will work fine.
+
+\subsection{sinkHTML Wrapper Function}
+\begin{styleR}
+sinkHTML = function()	{
+	writeOCC(longSUM,									dataNAME	=	"All",			name	=	TESTname)
+	writeOCC(longSUM[longSUM$Period == "Warm-up", ],	dataNAME	=	"Warm-up",		name	=	TESTname)
+	writeOCC(longSUM[longSUM$Period == TESTname, ],		dataNAME	=	TESTname,		name	=	TESTname)
+	writeOCC(longSUM[longSUM$Period == "Cooldown", ],	dataNAME	=	"Cooldown",		name	=	TESTname)
+}
+\end{styleR}
+
+Like the TXT output before, I have a special \textbf{sinkHTML} function that collects the different calls to \textbf{writeOCC}, thus creating a single command to create each HTML table I desire. In this case there are four tables I wish created, with one containing all of \textbf{longSUM}, hence why its \textbf{dataNAME} argument is "All." The other three then are subsets of \textbf{longSUM} for each of the three periods, with appropriate \textbf{dataNAME} values.
+
+That finishes off the section for the text outputs, so next we have the graph outputs.

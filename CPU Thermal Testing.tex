@@ -1,0 +1,102 @@
+\documentclass[11pt, letterpaper]{article}
+
+\title{Thermal Testing: CPU}
+\author{Jim Pitchford}
+
+\input{"Preamble.tex"}
+
+\usepackage{multicol}
+
+\begin{document}
+\graphicspath{{Media - CPU/}}
+
+\thispagestyle{empty}
+
+\pagenumbering{Roman}
+\setcounter{page}{1}
+\loadgeometry{normal}
+
+% \fancyhf{}	%clears the header
+% \fancyhf[HC]{\runtitle}	%puts the book title above chapter numbers
+
+\pdfbookmark{\contentsname}{toc}	%adds a bookmark of the TOC to the file but not the list itself
+\tableofcontents
+
+\cleardoublepage
+
+\pagenumbering{arabic}
+\setcounter{page}{1}
+
+\Part{Introduction}
+\input{"Sections - CPU/01 - Introduction.ltx"}
+\cleardoublepage
+
+\Part{Scripting}
+
+\input{"Sections - CPU/02 - Scripting - CPU Thermal.py.ltx"}
+\listingfile{Python}{Scripts - CPU}{CPU Thermal.py}
+\cleardoublepage
+
+\input{"Sections - CPU/03 - Scripting - CPU Thermal - Input.r.ltx"}
+\listingfile{R}{Scripts - CPU}{CPU Thermal - Input.r}
+\cleardoublepage
+
+\input{"Sections - CPU/04 - Scripting - CPU Thermal - Data - AMD.r.ltx"}
+\listingfile{R}{Scripts - CPU}{CPU Thermal - Data - AMD.r}
+\cleardoublepage
+
+\input{"Sections - CPU/05 - Scripting - CPU Thermal - Data - Intel.r.ltx"}
+\listingfile{R}{Scripts - CPU}{CPU Thermal - Data - Intel.r}
+\cleardoublepage
+
+\input{"Sections - CPU/06 - Scripting - CPU Thermal - Output.r Functions.ltx"}
+\listingfrag{R}{Scripts - CPU}{CPU Thermal - Output.r}{1}{131}
+\cleardoublepage
+
+\input{"Sections - CPU/07 - Scripting - CPU Thermal - Output.r Text.ltx"}
+\listingfrag{R}{Scripts - CPU}{CPU Thermal - Output.r}{133}{206}
+\cleardoublepage
+
+\input{"Sections - CPU/08 - Scripting - CPU Thermal - Output.r Graphs.ltx"}
+\listingfrag{R}{Scripts - CPU}{CPU Thermal - Output.r}{209}{530}
+\listingfile{R}{Scripts - CPU}{CPU Thermal - Output.r}
+\cleardoublepage
+
+\input{"Sections - CPU/09 - Scripting - Graph Renaming - CPU Thermal.py.ltx"}
+\listingfile{Python}{Scripts - CPU}{Graph Renaming - CPU Thermal.py}
+\cleardoublepage
+
+\Part{Results}
+
+\graphicspath{{Media - CPU/Prime95 (PBO Off)/}}
+\input{"Sections - CPU/10 - Results - Prime95 Torture Test (PBO Off).ltx"}
+\cleardoublepage
+
+\graphicspath{{Media - CPU/Prime95 (PBO On)/}}
+\input{"Sections - CPU/11 - Results - Prime95 Torture Test (PBO On).ltx"}
+\cleardoublepage
+
+\graphicspath{{Media - CPU/Cinebench R20 (Multi)/}}
+\input{"Sections - CPU/12 - Results - Cinebench R20 - Multi-thread - Pulse.ltx"}
+\cleardoublepage
+
+\graphicspath{{Media - CPU/Cinebench R20 (Single)/}}
+\input{"Sections - CPU/13 - Results - Cinebench R20 - Single-thread Pulse.ltx"}
+\cleardoublepage
+
+\Part{Conclusion}
+\input{"Sections - CPU/14 - Conclusion.ltx"}
+\cleardoublepage
+
+\iffalse
+\vspace{\fill}
+	\begin{center}
+	\vfill
+		{\changeurlcolor{black}\qrcode[height=2cm, level=Quality]{https://github.com/GuestJim/Serious-Statistics-The-Aliasing-Adventure/releases}}
+		
+		\vspace{0.25cm}
+		\href{https://github.com/GuestJim/Serious-Statistics-The-Aliasing-Adventure/releases}{Presentation and Article}
+	\end{center}
+\fi
+
+\end{document}

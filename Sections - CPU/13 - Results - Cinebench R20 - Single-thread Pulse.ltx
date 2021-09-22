@@ -1,0 +1,65 @@
+\section{Results - Cinebench R20 - Single-thread - Pulse:}
+\graphicspath{{Media - CPU/Cinebench R20 (Single)/}}
+
+Time for the final set of results I have, which are for running Cinebench R20 in its single-thread mode with a five second pause between each run. These results will likely be quite different from the multithread results already shown because of how much longer a single run is, in addition to how a single-threaded load behaves differently than a multithreaded load. In theory it should be possible to control the length of each run, instead of allowing the run to take as long as it does, but I am unsure of the value of such a system. Anyway, here are the statistics for the run, and remember the maximum value is important for the test period, as that should correspond only to the active thread or core, while average values will be influenced by the idling cores/threads.
+
+\vspace{1.0ex}	\noindent	\resizebox{\columnwidth}{!}{
+\begin{tabular}{| l | l | l | l | l | l | }
+	Period	&	Measurement	&	Min	&	Median	&	Mean	&	Max	\\	\hline\hline
+	Warm-up	&	CPU Temp (°C)	&	31	&	31.8	&	32.7	&	49.9	\\	\hline
+	Warm-up	&	Frequency (MHz)	&	2415	&	2566.31	&	2710.21	&	4274.34	\\	\hline
+	Warm-up	&	Socket Energy (mJ)	&	12205.29	&	14224.35	&	15054.84	&	42344.56	\\	\hline
+	Warm-up	&	Core Energy (mJ)	&	15.69	&	44.37	&	112.32	&	9677.11	\\	\hline
+	Warm-up	&	Uncore Energy (mJ)	&	11978.74	&	13714.35	&	14156.26	&	23143.42	\\	\hline
+	Cinebench R20 - Single-thread - Pulse	&	CPU Temp (°C)	&	48.3	&	62.8	&	62.7	&	76.1	\\	\hline
+	Cinebench R20 - Single-thread - Pulse	&	Frequency (MHz)	&	2366.01	&	2587.71	&	2913.61	&	4293.92	\\	\hline
+	Cinebench R20 - Single-thread - Pulse	&	Socket Energy (mJ)	&	13128.65	&	35115.55	&	35340.43	&	80547.96	\\	\hline
+	Cinebench R20 - Single-thread - Pulse	&	Core Energy (mJ)	&	29.05	&	92.13	&	2010.03	&	16964.04	\\	\hline
+	Cinebench R20 - Single-thread - Pulse	&	Uncore Energy (mJ)	&	-25820.85	&	19185.07	&	19260.18	&	66346.94	\\	\hline
+	Cooldown	&	CPU Temp (°C)	&	31.8	&	32.6	&	33.18	&	57.5	\\	\hline
+	Cooldown	&	Frequency (MHz)	&	2391.99	&	2530.54	&	2648.48	&	4288.75	\\	\hline
+	Cooldown	&	Socket Energy (mJ)	&	11527.74	&	13852.81	&	14345.35	&	37525.47	\\	\hline
+	Cooldown	&	Core Energy (mJ)	&	13.99	&	38.64	&	74.68	&	16456.85	\\	\hline
+	Cooldown	&	Uncore Energy (mJ)	&	-4705.8	&	13339.33	&	13747.88	&	35005.5	\\	\hline
+\end{tabular}
+}	\vspace{1.0ex}
+
+Being a single threaded test and pulsed, many of these results are not truly informative. For example, the frequency averages are being skewed downward because always 15 threads will be running at or near idle clocks, and for the pauses between pulses all 16 will idle. The maximums, however, are going to be informative because they must come from when the CPU was loaded.
+
+We can see that the 4.3 GHz boost clock is rather accurate, as the maximum frequency reached was indeed just shy of it. Perhaps I should have pointed this out earlier, but AMD's boost clock specifications refer to the maximum a single thread will reach under a normal configuration, and so is an upper limit. Being a single threaded test it is not surprising to see the socket power being well below the TDP while the maximum core power draw is in line with what we have seen with other tests.
+
+\image{Frequency - Max}
+
+It is very easy to see when a run finished and the five second pause occurs, because that is when we see the sudden falls in Temperature and Socket Power, as well as sudden spikes. Those falls come from the CPU entering an idle state as the load ends, while the spikes are from the CPU having to wake up because of the next run starting. It might still be the case that 5 seconds is not enough to refill the boost budgets completely, but even a partial refill will allow the CPU to push a little harder at the start of each run.
+
+Besides those spikes, we can also see the maximum Frequency is rather consistently along and above the 4.25 GHz guide line. There are periods it is below, which is probably from times the thread or core doing the work is one of the poorer cores in the processor, as not all are guaranteed to reach the same boost values.
+
+I do find the number of spikes to temperature during both idle periods unfortunate, but they should not be a problem. The suggestion would be something caused a brief load on the CPU, like some background task, but as quickly as the temperature increased, it decreased.
+
+Coming to the quartile data, the lower quartile for the test period's Temperature is 62.6 °C, and ignoring when it crossed and fell below it when first loading Cinebench, it took 274 seconds to reach that temperature. (The first load crossed it at seconds 3 through 6, and it was cooling for all of those measurements as well.) The Cooldown period's upper quartile was 33.3 °C, which is just above the mean, and it was crossed at second 3913, or after 313 seconds which is a little more than five minutes. It does cross back above that value at second 3916 until 3929, but it then remains below that value for the remainder of the listed values. That interruption was likely from one of the brief spikes we can see in the graph, and so not something to be too concerned about.
+
+\image{Frequency}
+
+This graph shows us two things, with one being that the loading of Cinebench R20 is a multi-threaded task, even if the test itself will only load a single thread. Looking at the temperature spikes that should correspond to each time the test loaded, we can see multiple threads elevated their frequencies, though only briefly.
+
+The other thing we can see is the test was not locked to a single thread but did move around. This is expected behavior as the different cores should be constantly monitored so tasks can be placed on those best prepared for it. That can be the threads that are the most efficiency, the most capable of reaching higher clocks, or even those that are simply the coolest at the time the task is to start. To be clear though, I doubt the threads are being moved in the middle of a specific task. If you watch Cinebench you can see it renders a square at a time and each square should be a single thread, but one square and the next could be and likely are different threads.
+
+\image{Core Power}
+
+As Temperature is not included in this graph, it is harder to confirm the loading is multithreaded, but we can still see times all of the cores increased in frequency and power usage. What else we can see is how several of the cores keep to their idle frequencies almost the entire time, with just brief interruptions during the test period. I do find it interesting how some cores also show both of their threads increase frequency together, while others seem capable of running threads at different frequencies. Truly that is not what I would expect, but it is quite visible here, especially for some cores. To be fair though, it is hard to tell how much data is at any one location, which is the purpose of the histograms, so some of what we see might just be thin ghosts to the data, only thick enough to appear opaque here.
+
+\image{Hist - Temperature}
+
+Nothing too interesting here, as these distributions are very similar to what we can see previously for single-threaded loads, and really all loads. The two idle periods are similar while the test period is higher with its data concentrated mostly around a single value.
+
+\image{Hist - Socket}
+
+This graph is a little interesting because of the maximum Socket Power reaching to 80 W. That caused the X-scale to extend that far, even though the bulk of the data is around 35 W. The coloring is almost all still in the blues because I have not changed the gradient from the multithread results. It helps put in perspective just how different a single-threaded and multithreaded load can be. It also means then that the averages we saw earlier that did not seem accurate actually were, so the assumption I suggested earlier of the values being skewed downward was wrong. I only applied the assumption to the frequency data and not power, but it would have been reasonable to apply it there as well, before seeing this graph.
+
+\image{Hist - Frequency}
+
+Nothing too surprising here, as the bulk of the data across each period is near the idle clocks of about 2.4 GHz to 2.6 GHz. I do find that bump in the test period around 3.65 GHz curious though. The two sections to the peaks at the higher frequencies make sense though. That data is from the loaded threads, and most of it is in the 4.25 GHz area, as it seems most of the threads are able to reach that. Some apparently top out at 4.2 GHz, which we could see in the previous graphs, and so we have a section of data there, but there is less to it.
+
+As for the statistics, only 0.2\% of the maximum frequencies for any point in time were below 3.7 GHz. I have the script set to only use the maximum frequency for single threaded tests because it will be skewed otherwise. In any case, this shows the loaded thread was almost completely in a boosted state, as one could expect for this situation.
+
+That wraps up these results then, which were not always that interesting. I do think the spikes when a Cinebench R20 run finished was neat to see, as it again helps us learn a little about the behavior of Precision Boost Overdrive. The boost might be brief, but it will still try its best.

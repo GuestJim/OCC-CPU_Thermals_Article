@@ -1,0 +1,83 @@
+\section{Results - Prime95 Torture Test (PBO Off):}
+\graphicspath{{Media - CPU/Prime95 (PBO Off)/}}
+
+During this overhaul of the scripts I succeeded at making various changes, with the two most prominent being the addition of Prime95 support and getting pulsed testing to work properly. I am going to start with the Prime95 Torture Test results, as I think they might be the more interesting to most people. I ran the test three times, twice with Precision Boost Overdrive enabled and once with it off. I am only going to share one of the PBO On results because the only reason I ran that configuration twice was because there is some variability to the Prime95 Torture Test, as we shall see before long. The first results I will share though will be PBO Off, even though I actually recorded them last, of these P95 tests.
+
+\vspace{1.0ex}	\noindent	\resizebox{\columnwidth}{!}{
+\begin{tabular}{| l | l | l | l | l | l | }
+	Period	&	Measurement	&	Min	&	Median	&	Mean	&	Max	\\	\hline\hline
+	Warm-up	&	CPU Temp (°C)	&	34.6	&	35.5	&	36.75	&	56.8	\\	\hline
+	Warm-up	&	Frequency (MHz)	&	2416.29	&	2625.44	&	2820.86	&	4214.33	\\	\hline
+	Warm-up	&	Socket Energy (mJ)	&	11357.36	&	13554.92	&	14380.97	&	41706.31	\\	\hline
+	Warm-up	&	Core Energy (mJ)	&	20.84	&	46.94	&	169.11	&	8460.85	\\	\hline
+	Warm-up	&	Uncore Energy (mJ)	&	10892.88	&	12757.36	&	13028.12	&	19803.32	\\	\hline
+	Prime95 Torture Test	&	CPU Temp (°C)	&	58.4	&	83.8	&	83.11	&	84.8	\\	\hline
+	Prime95 Torture Test	&	Frequency (MHz)	&	3603.74	&	3781.66	&	3782.72	&	4035.89	\\	\hline
+	Prime95 Torture Test	&	Socket Energy (mJ)	&	34140.06	&	119016.21	&	119278.37	&	125013.06	\\	\hline
+	Prime95 Torture Test	&	Core Energy (mJ)	&	946.09	&	9516.88	&	9614.72	&	11352.55	\\	\hline
+	Prime95 Torture Test	&	Uncore Energy (mJ)	&	21295.31	&	44553.67	&	42360.59	&	47438.98	\\	\hline
+	Cooldown	&	CPU Temp (°C)	&	32.8	&	34.4	&	35.48	&	78.8	\\	\hline
+	Cooldown	&	Frequency (MHz)	&	2370.38	&	2531.25	&	2713.37	&	4267.89	\\	\hline
+	Cooldown	&	Socket Energy (mJ)	&	11157.94	&	13346.59	&	13438.61	&	31565.13	\\	\hline
+	Cooldown	&	Core Energy (mJ)	&	18.33	&	38.02	&	93.44	&	4689.59	\\	\hline
+	Cooldown	&	Uncore Energy (mJ)	&	10598.29	&	12631.49	&	12691.13	&	21256.03	\\	\hline
+\end{tabular}
+}	\vspace{1.0ex}
+
+Looking at the idle periods, there is nothing to unusual for the temperatures and the frequencies appear reasonable as well. The socket power is a little interesting as we see the CPU apparently tends to pull just less than 14 W when it has nothing to do, which is something that should be fairly consistent across the tests.
+
+The test period, however, is more interesting to examine as we can see the temperature did get to the 85 °C throttling temperature, though the averages are a little lower. Still, looking at the frequency values we can see the CPU was not far above its 3.7 GHz base clock, but looking at the percentage statistics is interesting. According to this information apparently no time was spent below the base clock, though looking at the minimum tells us this must be a rounding error but we are still talking about very little time below that frequency.
+
+As for the power consumption, we see it did cross the 120 W TDP at least for its maximum, but the averages are below. This is exactly the behavior to expect when Precions Boost Overdrive is disabled, and once it is active we will find the power consumption is at least a little greater.
+
+\image{Frequency - Mean}
+
+As Prime95 does load all of a processor's threads, the Mean graph is the more appropriate to use here. It is somewhat interesting to look at too because there is some unexpected behavior captured in it, or at least I did not expect it. That is the variability presently especially with the Socket Power data, but can also be spotted in the temperature and frequency data. It appears Prime95 does not provide as consistent a load as other tests, such as Cinebench R20, though it does still succeed at loading a CPU heavily.
+
+Something I find rather interesting about this variability is trying to link together what we see across the three data sets at the approximately 2100 seconds mark and 3000 seconds mark. There are two clear short-lived power spikes, which you might expect to be paired with a boosting frequency, but looking at that data it instead appears a frequency drop occurred, and then the mean frequency returned. The temperature also fell between those two spikes, which is quite odd too because the power usage and frequency appear very similar to other sections in the data.
+
+Basic physics tells us the temperature of a system will be dependent on the amount of energy it is given. In this case, however, the Socket Power appears similar to what it was before and after this section, yet the temperature was a couple degrees cooler. Well, temperature is also going to be a function of frequency, which I have observed in other situations such as with GPUs, as that is related to the work being done, and generally the more work (which takes energy or power), the more heat. However the mean frequency again appears to be similar to what is in other sections of this data, so there must be another reason the temperature was lower for a time. While the reason I have in mind is technically speculation, it is not completely unfounded.
+
+Modern processors are very complex with an almost unimaginable number of circuits and pathways within them, even when limiting ourselves to look at a single core. Proof of this is the list of special instruction sets a CPU supports, such as the many versions of SSE as well as AVX, and there are more than thosetwo families. While there can be some overlap between these, there will be circuitry just for AVX and not SSE, and even just for AVX2 and not AVX, or just SSE3 and not SSE4. On top of that there are the pathways for x86\_64 or AMD64 that are unique to it, and then different components like the on-die caches, memory controller, and so on. The point I am trying to reach here is with all of these separate pathways and circuits, some will likely be more temperature efficient than others. Perhaps for that section Prime95 was utilizing circuitry that is more efficient and therefore produces less heat when used, even at the same amount of power draw, than others.
+
+While that may explain the drop in temperature, the brief power usage increases are still odd, but I do have a related idea for that as well. Though PBO is disabled, this AMD CPU is likely still using an opportunistic boosting method, which means if it can boost, it will until it cannot anymore. Perhaps the boosting technology employed here is more nuanced than being for the whole CPU, so instead of having a single power budget for the entire processor, the various pathways can each have their own. The pathways being used changed (in theory), so the power usage could increase until their budget drained, and then when switching again to another pathway, perhaps the previous one that could recharge its budget during this time, power usage again could boost. While I consider this reasonable, for the boosting technology to be so nuanced, this is largely speculation. It is true though that some circuitry is more power hungry than others, and so it would be appropriate to have separate budgets for some parts, but it is also reasonable to avoid making the system that complex.
+
+In any case, time to look at the quartile data, which tells us the lower quartile for the test period was 83.3 °C and it took 665 seconds for the CPU to reach that, which is just over 11 minutes. That is actually pretty good, compared to the Cinebench R20 data I collected months ago. We could guess this would be the case from looking at the curve of the temperature data, as it was not very quick at increasing.
+
+Something worth considering with this result though is that Prime95 might not be as good to load a CPU as Cinebench R20, as that got the processor to its throttling temperature far quicker, and was also more consistent during the length of the test. It still works, but Cinebench R20 might be better for stressing a system and its cooling.
+
+For the Cooldown period, the upper quartile was 36 °C and it crossed that at 4336 seconds or after 736 seconds (12 minutes and 16 seconds). There was some variability, but nothing too severe at this time, both based on the data and what we can see in the graph.
+
+\image{Frequency}
+
+Looking at this graph, it is hard to pick out anything very interesting, but there is something worth noticing as the frequencies for the different threads did not always behave the same. Though it is present in more places, we can check out that section we examined before by looking for the small decrease in temperature. What we can see is some threads saw their frequency fall while others actually increased. Remember, the previous graph showed the mean of these frequencies, so the increases and decreases balanced out to be similar to what was before this section, but we can see here that some threads were clocked higher and then fell during that section, and others were lower and then increased at that time. This inconsistency is certainly interesting and I wish I had a better explanation for it than my speculations. It does not reject my hypothesis completely though, concerning the efficiency of different circuits as this is something that would vary between cores, and along with efficiency would be the ability to clock higher under different loads.
+
+\image{Core Power}
+
+This is certainly interesting and also rather informative. Even though my Uncore data is not necessarily accurate, being the difference of socket power and the sum of the core power measurements that somehow can report as negative, we can see it was greater during that specific section we had looked at earlier. As we already know the socket power did not appear to change much during that specific section based on an earlier graph, this indicates the cores were using less of the power being provided to the CPU. At the same time though, something outside of the cores was taking more power, as socket power did not decrease noticeably, and we can see the core data shifted downward, at least a little, during this section. Unfortunately, with how little energy each individual core takes, on this scale it is difficult to see precisely how large a shift occurred.
+
+To address that difficulty, I have applied the \textbf{graphHIST} function to create additional histograms specifically for the Core and Uncore data, as well as a special version of the Socket Power histogram with a finder bin width. Remember, by default these are disabled but can be created by simply removing the appropriate line-comment symbols in the Output.r script.
+
+\image{Hist - Core}
+
+As we can see in this graph, the Core Power measurements did indeed go between two values, which can be seen but not easily read in the earlier graph. Looking at it here, we can see the swing is about 1 W. When looking at the Socket Power histogram, which I will share later, there is a single peak, so that data was very consistent, as appeared to be the case in the earlier graphs. I confirmed this is not an aliasing situation by reducing the bin width to 0.01 W and there remained a single peak. Because the original version of the Socket Power histogram shows the same result, I am not going to include this finer version.
+
+\image{Hist - Uncore}
+
+Initially I did not intend to share this histogram of the Uncore data, as it is a calculated value instead of a direct measurement, but there is something about it worth looking it. Based on the Core Power histogram, during the test period the cores tended to occupy one of two positions, approximately 1 W apart. Technically, as there are eight cores, some could be at the roughly 9 W state and the others at the 10 W state for the same peaks to be produced, but this graph shows that is not the case. The difference between the Uncore peaks is roughly 8 W, which is the greatest distance possible with the 1 W swing we just saw above. This is an 8 core processor, so 1 W per core gives us a maximum of an 8 W difference, implying the power draw of the cores was not mixed, with some at approximately 9 W and others at 10 W. If that were the case, say four cores at 9 W and the other four at 10 W, then the difference between these peaks here would be only 4 W.
+
+Bringing this all together, based on what we have seen across these graphs and the Socket Power histogram I will get to soon, there are times during the Prime95 Torture Test when the CPU cores each reduced their power draw by 1 W, but the other components of the processor increased their power draw by the 8 W the cores gave up. There is something more to talk about with this, but that will have to wait a little, when I get to another graph.
+
+\image{Hist - Temperature}
+
+Looking at this we do have one thing interesting to note and that is how much time was spent at 83 °C and 84 °C, as the CPU was not just pegged at 85 °C the entire time. We knew this would be the case based on the earlier graphs, and this confirms it. Having since originally writing this I have worked through a great deal of GPU data and would like to add, even though graphics cards and CPUs are certainly quite different technologies, it seemed the intended behavior there for the temperature to reach just under the throttling point. Perhaps that is somewhat similar here, or it is a coincidence of the cooler's performance and CPU's power. We can also see the two idle periods did behave quite similarly, which makes sense.
+
+\image{Hist - Socket}
+
+Here we see what I mentioned earlier, about there being a single peak to the Socket Power data. There is so much data to this single peak the box plot, which contains half of the data, appears to be about 1 W wide. Clearly total power draw was consistent then, with it being what the power was used for that changed. We can certainly assume the power was not simply being wasted, as then the CPU should have been drawing less power.
+
+\image{Hist - Frequency}
+
+And this is the other graph I was referring to earlier, because we can see the thread frequency data is quite consistent as well. This is curious because typically power and frequency are related, so the 1 W drop to each core should also have reduced the Frequency of the threads on those cores. Instead, the frequency appears to be unchanged, and this is from the raw data, not some summary statistic, so nothing is being hidden by some kind of processing. The change in frequency that was visible but not significant in the earlier graphs must indeed have been quite insignificant for it to not appear here. Looking at the statistics, 1.25\% of the data was below the base clock of 3.7 GHz for the test period, and looking back at the graph, it appears this is only from those brief fluctuations.
+
+With the Core Power measurements showing a reduction but the Frequency not falling, that suggests the compute workload was lighter, allowing the frequency to remain stable. That or the CPU could have actually been drawing less power while maintaining the same frequency, but that contradicts the observed increase in Uncore Power, as that power must have been used for something, else the CPU would have not been pulling it. Whatever that power was going to though, it was apparently more efficient than the cores, because the temperature reduced a couple degrees, according to the graphs we looked at earlier.
